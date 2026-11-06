@@ -1,100 +1,79 @@
-// Read-only tree browser + file view (spec §11, U§2). Highlighted with the
-// same highlighter as the diff.
+// Read-only explorer (spec §11, U§2, spec §18.3): sky-eye breadcrumb chrome +
+// side toggle around @pierre/trees FileTree (search, git-status badges), file
+// contents rendered by @pierre/diffs File. Changed files in chapters link here.
 import { get } from "./api.js";
-import { esc, highlight, langFor } from "./highlight.js";
+import { createFileTree, createFileView } from "./pierre-adapter.js";
 
-export function renderExplorer(app, session, route, backLink) {
+export async function renderExplorer(app, session, route, backLink) {
   const sideRef = route.side === "base" ? session.base : session.head;
   const sideName = route.side === "base" ? "base" : "head";
-  const dir = route.path || "";
 
   app.innerHTML = `
     <header>
       <a href="#" class="crumb-root">sky-eye</a>
       <span class="badge">${sideName}</span>
-      <span class="crumbs" id="crumbs"></span>
+      <span class="crumbs" id="crumbs">${esc(route.path)}</span>
       <span class="side-toggle">
         <button data-side="head" class="${sideName === "head" ? "on" : ""}">head</button>
         <button data-side="base" class="${sideName === "base" ? "on" : ""}">base</button>
       </span>
       <a class="explorer-link" href="#${esc(session.id)}">back to review</a>
     </header>
-    <div id="explorer-body"><p class="empty">loading…</p></div>`;
+    <div class="explorer">
+      <div class="explorer-tree" id="explorer-tree"><p class="empty">loading…</p></div>
+      <div class="explorer-file" id="explorer-file"></div>
+    </div>`;
 
   document.querySelectorAll(".side-toggle button").forEach((b) => {
     b.onclick = () => {
-      location.hash = `#${session.id}/explorer/${route.path}§${b.dataset.side}`;
+      location.hash = `#${session.id}/explorer/${encodeURIComponent(route.path)}§${b.dataset.side}`;
     };
   });
 
-  // breadcrumb: repo name / segments
-  const crumbs = document.getElementById("crumbs");
-  const segments = dir ? dir.split("/") : [];
-  const repoName = session.meta.repo.split("/").filter(Boolean).at(-1);
-  crumbs.innerHTML =
-    `<a href="${explorerHash(session, "", sideName)}">${esc(repoName)}</a>` +
-    segments
-      .map((seg, i) => {
-        const prefix = segments.slice(0, i + 1).join("/");
-        return ` / <a href="${explorerHash(session, prefix, sideName)}">${esc(seg)}</a>`;
-      })
-      .join("");
+  const treeHost = document.getElementById("explorer-tree");
+  const fileHost = document.getElementById("explorer-file");
 
-  const body = document.getElementById("explorer-body");
+  try {
+    const entries = await get(
+      `/api/tree?ref=${encodeURIComponent(sideRef)}&recursive=1`,
+    );
+    let tree;
+    try {
+      tree = createFileTree({
+        paths: entries.map((e) => e.path),
+        changed: session.chapters,
+        onOpen: (path) => {
+          location.hash = `#${session.id}/explorer/${encodeURIComponent(path)}§${route.side}`;
+        },
+      });
+      treeHost.replaceChildren(tree.el);
+      if (route.path) tree.tree.scrollToPath(route.path, { focus: false });
+    } catch (e) {
+      treeHost.innerHTML = `<div class="banner error">${esc(e?.message ?? "tree failed to load")}</div>`;
+    }
 
-  if (looksLikeFile(dir)) {
-    renderFileView(body, session, sideRef, dir, sideName, backLink);
-    return;
+    if (route.path) await renderFilePane(fileHost, session, sideRef, route.path, sideName);
+    else fileHost.innerHTML = `<p class="empty">pick a file from the tree</p>`;
+  } catch (e) {
+    fileHost.innerHTML = `<div class="banner error">${esc(e?.error ?? "could not load tree")}</div>`;
   }
-
-  get(`/api/tree?ref=${encodeURIComponent(sideRef)}&dir=${encodeURIComponent(dir)}`)
-    .then((entries) => {
-      const dirs = entries.filter((e) => e.type === "dir");
-      const files = entries.filter((e) => e.type === "file");
-      const li = (e, cls) =>
-        `<li class="${cls}"><a href="${explorerHash(session, e.path, sideName)}">${esc(e.name)}</a></li>`;
-      body.innerHTML =
-        entries.length === 0
-          ? `<p class="empty">empty directory</p>`
-          : `<ul class="tree">${dirs.map((e) => li(e, "dir")).join("")}${files
-              .map((e) => li(e, "file"))
-              .join("")}</ul>`;
-    })
-    .catch((e) => {
-      body.innerHTML = `<div class="banner error">${esc(e?.error ?? "could not load tree")}</div>`;
-    });
 }
 
-function explorerHash(session, path, side) {
-  return `#${session.id}/explorer/${encodeURIComponent(path)}§${side}`;
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// a path is a file if it has an extension (dirs rarely do); final arbiter is
-// the /api/tree vs /api/file response
-function looksLikeFile(path) {
-  const last = path.split("/").at(-1) ?? "";
-  return last.includes(".");
-}
-
-async function renderFileView(body, session, ref, path, sideName, backLink) {
+async function renderFilePane(host, session, ref, path, sideName) {
   try {
     const { content, binary } = await get(
       `/api/file?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(path)}`,
     );
     if (binary) {
-      body.innerHTML = `<div class="banner">binary file</div>`;
+      host.innerHTML = `<div class="banner">binary file</div>`;
       return;
     }
-    const lang = langFor(path);
-    let state = {};
-    const lines = content.split("\n").map((line) => {
-      const r = highlight(line, lang, state);
-      state = r.state;
-      return `<span class="ln"></span><code>${r.html}\n</code>`;
-    });
-    body.innerHTML = `<div class="file-view"><div class="file-path">${esc(path)} <span class="meta">at ${sideName}</span></div><pre id="file-code"></pre></div>`;
-    body.querySelector("#file-code").innerHTML = lines.join("");
+    host.replaceChildren(createFileView(path, content).el);
   } catch (e) {
-    body.innerHTML = `<div class="banner error">${esc(e?.error ?? "could not load file")}</div>`;
+    host.innerHTML = `<div class="banner error">${esc(e?.error ?? "could not load file")}</div>`;
   }
 }

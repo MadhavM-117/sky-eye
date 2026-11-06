@@ -3,7 +3,7 @@ import path from "node:path";
 import { route } from "./server.ts";
 import { ApiError, validateRef } from "./cli.ts";
 import { getRefs } from "./refs.ts";
-import { listTree, readFileAt } from "./tree.ts";
+import { listTree, listTreeRecursive, readFileAt } from "./tree.ts";
 import {
   createSession,
   listSessions,
@@ -15,6 +15,10 @@ route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
 
 route("GET", "/api/tree", async ({ root, kind, url }) => {
   const ref = validateRef(url.searchParams.get("ref") ?? "");
+  // recursive=1: every file path at ref, flat (spec §11) — feeds the
+  // explorer FileTree; default stays the single-directory listing
+  if (url.searchParams.get("recursive") === "1")
+    return listTreeRecursive(root, kind, ref);
   const dir = validateDir(url.searchParams.get("dir") ?? ".");
   return listTree(root, kind, ref, dir);
 });

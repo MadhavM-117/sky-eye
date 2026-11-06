@@ -13,12 +13,9 @@
   --border: color-mix(in lab, var(--bg) 88%, var(--fg));
   --accent: var(--modified);
   --add-bg: color-mix(in lab, var(--bg) 88%, var(--added));
-  --add-num-bg: color-mix(in lab, var(--bg) 91%, var(--added));
   --del-bg: color-mix(in lab, var(--bg) 88%, var(--deleted));
-  --del-num-bg: color-mix(in lab, var(--bg) 91%, var(--deleted));
   --add-emphasis: rgb(from var(--added) r g b / 0.15);
   --del-emphasis: rgb(from var(--deleted) r g b / 0.15);
-  --bg-separator: color-mix(in lab, var(--bg) 96%, var(--fg));
   --header-bg: color-mix(in lab, var(--bg) 96%, var(--fg));
   --banner-bg: color-mix(in lab, var(--bg) 92%, var(--warning));
   --error-bg: color-mix(in lab, var(--bg) 92%, var(--deleted));
@@ -113,42 +110,9 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 }
 .narrative:focus { border-style: solid; outline: none; }
 
-/* two-column diff: old num + old code | new num + new code (pierre grid rows) */
-.diff {
-  display: grid; grid-template-columns: auto 1fr auto 1fr;
-  font-family: var(--font-mono); font-size: 12px; width: 100%;
-}
-.diff .line { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
-.diff .num {
-  text-align: right; padding: 0 8px; user-select: none;
-  color: var(--muted); background: var(--header-bg);
-}
-.diff .code {
-  overflow-x: auto; white-space: pre; padding: 0 8px;
-  scrollbar-width: none;
-}
-.diff .code::-webkit-scrollbar { height: 6px; }
-.diff .code::-webkit-scrollbar-thumb { background: transparent; }
-.diff .line:hover .code::-webkit-scrollbar-thumb { background: var(--muted); }
-[data-line-type="change-addition"] .num { background: var(--add-num-bg); color: var(--added); }
-[data-line-type="change-deletion"] .num { background: var(--del-num-bg); color: var(--deleted); }
-[data-line-type="change-addition"] .code { background: var(--add-bg); }
-[data-line-type="change-deletion"] .code { background: var(--del-bg); }
-.hunk-sep {
-  grid-column: 1 / -1; height: 28px; display: flex; align-items: center;
-  padding: 0 8px; background: var(--bg-separator); color: var(--muted);
-  font: 11px var(--font-mono); border-block: 1px solid var(--border);
-  user-select: none;
-}
-.hunk-sep span { padding-inline: 1ch; background: var(--bg); }
-
-/* token colors */
-.tok-kw { color: light-dark(#cf222e, #ff7b72); }
-.tok-str { color: light-dark(#0a3069, #a5d6ff); }
-.tok-com { color: light-dark(#6e7781, #8b949e); font-style: italic; }
-.tok-num { color: light-dark(#0550ae, #79c0ff); }
-.tok-type { color: light-dark(#953800, #ffa657); }
-.tok-fn { color: light-dark(#8250df, #d2a8ff); }
+/* Diff/tree internals are styled by @pierre/diffs + @pierre/theme inside
+   their own containers/shadow roots; --add-bg/--del-bg etc. remain for the
+   app chrome (status chips). */
 
 /* banners */
 .banner {
@@ -157,26 +121,13 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 }
 .banner.error { background: var(--error-bg); }
 
-/* explorer */
+/* explorer: tree panel + file pane (tree/file internals are pierre) */
+.explorer { display: grid; grid-template-columns: 280px 1fr; gap: 12px; align-items: start; }
+.pierre-tree { height: 70vh; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; }
+.explorer-file { min-width: 0; overflow-x: auto; }
 .crumbs a { color: var(--accent); text-decoration: none; }
 .side-toggle button { border-radius: 0; border-right-width: 0; }
 .side-toggle button:first-child { border-radius: 6px 0 0 6px; }
 .side-toggle button:last-child { border-radius: 0 6px 6px 0; border-right-width: 1px; }
-ul.tree { list-style: none; padding: 0; }
-ul.tree li { padding: 2px 0; border-bottom: 1px solid var(--header-bg); }
-ul.tree a { color: var(--fg); text-decoration: none; }
-ul.tree a:hover { color: var(--accent); }
-ul.tree li.dir a::before { content: "📁 "; }
-ul.tree li.file a::before { content: "📄 "; }
-.file-view .file-path { font-weight: 600; margin-bottom: 6px; }
-pre#file-code {
-  background: var(--header-bg); border: 1px solid var(--border);
-  border-radius: 6px; padding: 10px; overflow-x: auto;
-  font-family: var(--font-mono); font-size: 12px; margin: 0;
-}
-span.ln {
-  display: inline-block; width: 2.5em; text-align: right; margin-right: 10px;
-  color: var(--muted); background: var(--header-bg); user-select: none;
-}
 .reviewed-toggle { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
 .explorer-link { color: var(--accent); }

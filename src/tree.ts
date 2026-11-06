@@ -19,6 +19,30 @@ export async function listTree(
   return gitTree(root, ref, normalized);
 }
 
+// Every file path at a ref, flat (spec §11). Feeds the explorer's whole-repo
+// FileTree, whose search needs the full path list — per-dir lazy loading
+// would make search cover only visited directories.
+export async function listTreeRecursive(
+  root: string,
+  kind: "git" | "jj",
+  ref: string,
+): Promise<TreeEntry[]> {
+  const out =
+    kind === "jj"
+      ? await run("jj", ["file", "list", "-r", ref], root)
+      // note: no trailing "--" — after --end-of-options ls-tree would treat
+      // it as a pathspec, not a separator, and list nothing
+      : await run(
+          "git",
+          ["ls-tree", "-r", "--name-only", "--end-of-options", ref],
+          root,
+        );
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .map((p) => ({ name: p.split("/").at(-1) ?? p, type: "file" as const, path: p }));
+}
+
 async function gitTree(root: string, ref: string, prefix: string): Promise<TreeEntry[]> {
   const out = await run(
     "git",

@@ -1,6 +1,10 @@
 // Hash router + first screen + session view (spec §18, U§1.5, U§3).
 import { get, mut } from "./api.js";
-import { renderDiff } from "./diffview.js";
+import { createFileDiff, initPierre } from "./pierre-adapter.js";
+
+// highlighter must be loaded before FileDiff renders anything; await it
+// (best-effort: if it fails, diffs falls back to unhighlighted text)
+const pierreReady = initPierre().catch(() => {});
 import { renderExplorer } from "./explorer.js";
 
 const app = document.getElementById("app");
@@ -12,7 +16,8 @@ function parseHash() {
   const idx = h.indexOf("/explorer/");
   if (idx > 0) {
     const sid = h.slice(0, idx);
-    const rest = h.slice(idx + "/explorer/".length);
+    // URL bars percent-encode §, so accept both spellings for the separator
+    const rest = h.slice(idx + "/explorer/".length).replace(/%C2%A7/g, "§");
     const sep = rest.indexOf("§");
     const encPath = sep === -1 ? rest : rest.slice(0, sep);
     const side = sep === -1 || !rest.slice(sep + 1) ? "head" : rest.slice(sep + 1);
@@ -29,6 +34,7 @@ window.addEventListener("hashchange", render);
 render();
 
 async function render() {
+  await pierreReady;
   const route = parseHash();
   try {
     if (route.view === "first") return await renderFirst();
@@ -180,7 +186,9 @@ function wireSession(session) {
 
   document.querySelectorAll(".diff-holder").forEach((holder) => {
     const chapter = current.chapters.find((c) => c.id === holder.dataset.chapter);
-    holder.appendChild(renderDiff(chapter));
+    const diff = createFileDiff({ path: chapter.file, status: chapter.status }, chapter.hunks);
+    if (diff) holder.appendChild(diff.el);
+    else holder.innerHTML = `<div class="banner">binary file — no textual diff</div>`;
   });
 
   document.querySelectorAll(".collapse").forEach((btn) => {

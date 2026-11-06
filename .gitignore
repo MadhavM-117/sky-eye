@@ -1,4 +1,4 @@
 tmp/
-
 .sky-watch/
 node_modules/
+src/public/dist/

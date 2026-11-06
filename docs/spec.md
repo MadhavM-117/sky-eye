@@ -326,7 +326,7 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `GET /api/sessions` | — | `[{ id, aliases, label, updatedAt, openComments, reviewed }]` |
 | `GET /api/sessions/:id` | — | full stored `Session` plus computed `stale: boolean` (see §13.1) |
 | `GET /api/refs` | — | §5 |
-| `GET /api/tree?ref=&dir=` | — | `[{ name, type: "dir"|"file", path }]`; `dir` defaults to root; read from VCS object store at `ref`, repo-relative, contained (§11) |
+| `GET /api/tree?ref=&dir=[&recursive=1]` | — | `[{ name, type: "dir"|"file", path }]`; `dir` defaults to root; with `recursive=1` returns every *file* path at `ref`, flat (dirs derived by the client tree) — feeds the explorer's whole-repo `FileTree`, whose search needs the full path list; read from VCS object store at `ref`, repo-relative, contained (§11) |
 | `GET /api/file?ref=&path=&side=` | — | `{ content, binary }`; read from VCS object store at `ref` (`side` selects base/head ref of the open session or a plain ref, §11) |
 | `POST /api/sessions` | `{ base, head, baseLabel?, headLabel? }` | Resolves `base` and `head` to canonical stable IDs (§5/§9.1). If a session with `<base>..<head>` exists → **200 with the existing session** (no duplicate, U§1.5); else create: build diff, chunk, run rule classification, persist → `201` + `Session` |
 | `POST /api/comments` | `{ sessionId, chapterId, file, side, line, text, priority? }` | `201` + `Comment`; server captures `anchor` from the session diff/VCS file (§12) |
@@ -341,7 +341,11 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 
 - `GET /api/tree`: list directory at `ref` from the VCS object store
   (`git ls-tree --end-of-options <ref> -- <dir>` / `jj file list -r <ref> -- <dir>`),
-  return entries with repo-relative paths.
+  return entries with repo-relative paths. `recursive=1` returns the flat
+  list of every file path at `ref` instead (`git ls-tree -r --name-only`,
+  `jj file list` is recursive already) — the explorer FileTree needs the
+  full path list for search (§18.3); note git's `--end-of-options` makes a
+  trailing `--` a pathspec for ls-tree, so the recursive form omits it.
 - `GET /api/file`: read file blob at `ref` from the VCS object store
   (`git cat-file -p <ref>:<path>` / `jj file show -r <ref> -- <path>`),
   never from the live working tree on disk (so files deleted or moved in head
