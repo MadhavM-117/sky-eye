@@ -1,25 +1,22 @@
-// Two-column GitHub-style diff renderer (old left / new right).
-// Escaping happens inside highlight.js; line numbers/text here are escaped too.
-import { highlight, langFor } from "./highlight.js";
+// Two-column diff in pierre-style grid rows (old num/code | new num/code).
+// Escaping happens inside highlight.js; line numbers here are escaped too.
+import { esc, highlight, langFor } from "./highlight.js";
 
 export function renderDiff(chapter, repoFile) {
   const lang = langFor(chapter.file);
-  const table = document.createElement("table");
-  table.className = "diff";
+  const root = document.createElement("div");
+  root.className = "diff";
 
   for (const hunk of chapter.hunks) {
-    const head = table.insertRow();
-    head.className = "hunk-header";
-    head.innerHTML = `<td colspan="4">${hunk.header ?? `@@ -${hunk.oldStart} +${hunk.newStart} @@`}</td>`;
+    const sep = document.createElement("div");
+    sep.className = "hunk-sep";
+    sep.innerHTML = `<span>${esc(hunk.header ?? `@@ -${hunk.oldStart} +${hunk.newStart} @@`)}</span>`;
+    root.appendChild(sep);
 
     let oldState = {};
     let newState = {};
     const pendingDels = [];
     const emitPair = (del, add) => {
-      const row = table.insertRow();
-      row.className = "line";
-      const numOld = del ? del.oldLine : "";
-      const numNew = add ? add.newLine : "";
       let oldHtml = "";
       let newHtml = "";
       if (del) {
@@ -32,13 +29,17 @@ export function renderDiff(chapter, repoFile) {
         newHtml = r.html;
         newState = r.state;
       }
+      const row = document.createElement("div");
+      row.className = "line";
+      row.dataset.lineType = del && add ? "context" : add ? "change-addition" : "change-deletion";
       row.dataset.oldLine = del ? del.oldLine : "";
       row.dataset.newLine = add ? add.newLine : "";
       row.innerHTML =
-        `<td class="num num-old">${numOld}</td>` +
-        `<td class="num num-new">${numNew}</td>` +
-        `<td class="code ${del ? "del" : "ctx"}">${oldHtml}</td>` +
-        `<td class="code ${add ? "add" : "ctx"}">${newHtml}</td>`;
+        `<span class="num num-old">${del ? del.oldLine : ""}</span>` +
+        `<span class="code ${del ? "del" : ""}">${oldHtml || "&nbsp;"}</span>` +
+        `<span class="num num-new">${add ? add.newLine : ""}</span>` +
+        `<span class="code ${add ? "add" : ""}">${newHtml || "&nbsp;"}</span>`;
+      root.appendChild(row);
     };
     const flushDels = (adds) => {
       const n = Math.max(pendingDels.length, adds.length);
@@ -60,5 +61,5 @@ export function renderDiff(chapter, repoFile) {
     }
     flushDels([]);
   }
-  return table;
+  return root;
 }

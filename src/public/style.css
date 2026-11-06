@@ -1,20 +1,29 @@
-/* All theme values as CSS custom properties (process.md foundations);
-   v1 ships no dark mode, but nothing user-facing is hard-coded. */
+/* Derived-color palette (port of tmp/pierre/packages/diffs/src/style.css):
+   backgrounds are color-mix() of base accents against the page bg —
+   88% for line bg, 91% for number gutters, 96% for chrome surfaces. */
 :root {
-  --bg: #ffffff;
-  --fg: #1f2328;
-  --muted: #656d76;
-  --border: #d1d9e0;
-  --accent: #0969da;
-  --add-bg: #e6ffec;
-  --add-num-bg: #ccffd8;
-  --del-bg: #ffebe9;
-  --del-num-bg: #ffd7d5;
-  --header-bg: #f6f8fa;
-  --banner-bg: #fff8c5;
-  --error-bg: #ffebe9;
+  color-scheme: light dark;
+  --added: light-dark(#0dbe4e, #5ecc71);
+  --deleted: light-dark(#ff2e3f, #ff6762);
+  --modified: light-dark(#009fff, #69b1ff);
+  --warning: light-dark(#d5a910, #ffd452);
+  --bg: light-dark(#ffffff, #16181d);
+  --fg: light-dark(#1f2328, #e6e8ea);
+  --muted: color-mix(in lab, var(--fg) 55%, var(--bg));
+  --border: color-mix(in lab, var(--bg) 88%, var(--fg));
+  --accent: var(--modified);
+  --add-bg: color-mix(in lab, var(--bg) 88%, var(--added));
+  --add-num-bg: color-mix(in lab, var(--bg) 91%, var(--added));
+  --del-bg: color-mix(in lab, var(--bg) 88%, var(--deleted));
+  --del-num-bg: color-mix(in lab, var(--bg) 91%, var(--deleted));
+  --add-emphasis: rgb(from var(--added) r g b / 0.15);
+  --del-emphasis: rgb(from var(--deleted) r g b / 0.15);
+  --bg-separator: color-mix(in lab, var(--bg) 96%, var(--fg));
+  --header-bg: color-mix(in lab, var(--bg) 96%, var(--fg));
+  --banner-bg: color-mix(in lab, var(--bg) 92%, var(--warning));
+  --error-bg: color-mix(in lab, var(--bg) 92%, var(--deleted));
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --font-sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -91,6 +100,9 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 .status.added { background: var(--add-bg); }
 .status.deleted { background: var(--del-bg); }
 .status.modified { background: var(--header-bg); border: 1px solid var(--border); }
+.stats { font-family: var(--font-mono); font-size: 11px; }
+.stats .add { color: var(--added); }
+.stats .del { color: var(--deleted); }
 .chapter.collapsed .chapter-body { display: none; }
 .chapter.collapsed .chapter-head { border-bottom: none; }
 .chapter-body { padding: 10px; }
@@ -101,30 +113,42 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 }
 .narrative:focus { border-style: solid; outline: none; }
 
-/* two-column diff */
-table.diff { border-collapse: collapse; width: 100%; font-family: var(--font-mono); font-size: 12px; }
-table.diff td { padding: 0 6px; vertical-align: top; white-space: pre-wrap; word-break: break-all; }
-.hunk-header td {
-  background: var(--header-bg); color: var(--muted);
-  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-  font-size: 11px; padding: 2px 6px;
+/* two-column diff: old num + old code | new num + new code (pierre grid rows) */
+.diff {
+  display: grid; grid-template-columns: auto 1fr auto 1fr;
+  font-family: var(--font-mono); font-size: 12px; width: 100%;
 }
-td.num {
-  text-align: right; color: var(--muted); user-select: none;
-  width: 1%; min-width: 40px; background: var(--header-bg);
+.diff .line { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
+.diff .num {
+  text-align: right; padding: 0 8px; user-select: none;
+  color: var(--muted); background: var(--header-bg);
 }
-td.num-old.sel-del { background: var(--del-num-bg); }
-td.code { min-width: 45%; }
-td.code.add { background: var(--add-bg); }
-td.code.del { background: var(--del-bg); }
+.diff .code {
+  overflow-x: auto; white-space: pre; padding: 0 8px;
+  scrollbar-width: none;
+}
+.diff .code::-webkit-scrollbar { height: 6px; }
+.diff .code::-webkit-scrollbar-thumb { background: transparent; }
+.diff .line:hover .code::-webkit-scrollbar-thumb { background: var(--muted); }
+[data-line-type="change-addition"] .num { background: var(--add-num-bg); color: var(--added); }
+[data-line-type="change-deletion"] .num { background: var(--del-num-bg); color: var(--deleted); }
+[data-line-type="change-addition"] .code { background: var(--add-bg); }
+[data-line-type="change-deletion"] .code { background: var(--del-bg); }
+.hunk-sep {
+  grid-column: 1 / -1; height: 28px; display: flex; align-items: center;
+  padding: 0 8px; background: var(--bg-separator); color: var(--muted);
+  font: 11px var(--font-mono); border-block: 1px solid var(--border);
+  user-select: none;
+}
+.hunk-sep span { padding-inline: 1ch; background: var(--bg); }
 
 /* token colors */
-.tok-kw { color: #cf222e; }
-.tok-str { color: #0a3069; }
-.tok-com { color: #6e7781; font-style: italic; }
-.tok-num { color: #0550ae; }
-.tok-type { color: #953800; }
-.tok-fn { color: #8250df; }
+.tok-kw { color: light-dark(#cf222e, #ff7b72); }
+.tok-str { color: light-dark(#0a3069, #a5d6ff); }
+.tok-com { color: light-dark(#6e7781, #8b949e); font-style: italic; }
+.tok-num { color: light-dark(#0550ae, #79c0ff); }
+.tok-type { color: light-dark(#953800, #ffa657); }
+.tok-fn { color: light-dark(#8250df, #d2a8ff); }
 
 /* banners */
 .banner {
@@ -150,6 +174,9 @@ pre#file-code {
   border-radius: 6px; padding: 10px; overflow-x: auto;
   font-family: var(--font-mono); font-size: 12px; margin: 0;
 }
-span.ln { display: inline-block; width: 2.5em; text-align: right; margin-right: 10px; color: var(--muted); user-select: none; }
+span.ln {
+  display: inline-block; width: 2.5em; text-align: right; margin-right: 10px;
+  color: var(--muted); background: var(--header-bg); user-select: none;
+}
 .reviewed-toggle { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
 .explorer-link { color: var(--accent); }

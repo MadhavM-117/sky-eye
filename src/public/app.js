@@ -152,12 +152,20 @@ const badge = (session) =>
 
 function chapterHtml(session, c, index) {
   const encFile = encodeURIComponent(c.file);
+  const [add, del] = c.hunks.reduce(
+    ([a, d], h) => [
+      a + h.lines.filter((l) => l.type === "add").length,
+      d + h.lines.filter((l) => l.type === "del").length,
+    ],
+    [0, 0],
+  );
   return `
   <section class="chapter" data-chapter="${c.id}">
     <h2 class="chapter-head">
       <button class="collapse" data-i="${index}">▾</button>
       <a class="file-link" href="#${esc(session.id)}/explorer/${encFile}/head">${esc(c.file)}</a>
       <span class="status ${c.status}">${c.status}</span>
+      <span class="stats">${del || !add ? `<span class="del">−${del}</span> ` : ``}<span class="add">+${add}</span></span>
     </h2>
     <div class="chapter-body">
       <textarea class="narrative" data-chapter="${c.id}" rows="2"
