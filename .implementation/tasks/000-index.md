@@ -10,3 +10,6 @@ New todos that come up get the next free number as their own file.
 - `005` M5 Attention marks — rule-based classify + line marking UI
 - `006` M6 Export/import — download, merge-on-import (`updatedAt` wins), re-verification
 - `007` M7 LLM narratives — llm.ts, narrate, shared classification call
+- `008` Pierre adoption — swap hand-rolled diffview/highlighter/explorer-tree
+  for `@pierre/*` packages (dependency policy revised in spec §2); run before
+  002/005 since annotations replace their hand-built rendering paths

@@ -124,8 +124,9 @@ read top to bottom; collapsing is an optimization, not the default).
   user can rewrite or write it from scratch at any time. A re-run that would
   overwrite a human-edited narrative asks first.
 - Below it: the file path heading, GitHub-style two-column diff (old left, new
-  right), hunks with context lines. Code is syntax-highlighted (`public/highlight.js`,
-  plain-text fallback) — file views and diff lines use the same highlighter.
+  right), hunks with context lines. Code is syntax-highlighted by the pierre
+  highlighter (152 languages, plain-text fallback) — file views and diff
+  lines use the same highlighter and theme.
 - **Deep links**: hovering a diff line or comment exposes a copy-link
   (local URL fragment). Opening one scrolls to and highlights the target;
   links survive export/import and break on rebase like everything else

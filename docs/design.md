@@ -39,12 +39,17 @@ files you can export and share.
   `127.0.0.1:<port>`, and requires `X-Sky-Eye: 1` on every non-GET request —
   browsers cannot attach custom headers cross-origin without a passing
   preflight, which kills drive-by CSRF.
-- **Frontend**: single-page, no build step — plain JS ES modules in
-  `public/`, calling the JSON API. Left column old code, right column new,
-  like GitHub. The interesting logic (diff parsing, chunking, remap) is
-  server-side TypeScript in `src/`; the browser gets data, not logic.
-  Highlighting is a lightweight zero-dependency browser tokenizer in
-  `public/highlight.js` (§6b).
+- **Frontend**: single-page app in `public/`, calling the JSON API. Left
+  column old code, right column new, like GitHub. The heavy UI lifting —
+  two-column diff rendering with a line-annotation framework, 152-language
+  syntax highlighting, the file tree — comes from the open-source
+  `@pierre/diffs` / `@pierre/highlights` / `@pierre/trees` packages
+  (Apache-2.0, source vendored at `tmp/pierre/packages/` for reference),
+  wired to the server JSON through one thin adapter module. Bundled with
+  esbuild (the only build step; the server itself stays buildless and
+  dependency-free — see §8). The interesting logic (diff parsing, chunking,
+  remap) is server-side TypeScript in `src/`; the browser gets data, not
+  logic.
 - **State**: one JSON file per review session in `.sky-watch/` (see §4). The
   export file *is* this file.
 - **Paths are relative**: all file paths in session JSON and API responses
@@ -59,7 +64,7 @@ files you can export and share.
 | 0a | Ignore-file upkeep | startup step | ensure `.sky-watch/` is ignored: append to `.gitignore` (created if missing; also honored by jj) and to `.dockerignore` (only if `.dockerignore` already exists) |
 | 0b | File explorer | `tree.ts` + frontend | GitHub/GitLab-style repo tree browsing and read-only file viewing (§6b) |
 | 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines, per-file tabs or accordion |
-| 1a | Syntax highlighting | `public/highlight.js` | zero-dependency syntax tokenizer in the browser, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
+| 1a | Syntax highlighting | `@pierre/highlights` (via `@pierre/diffs` rendering) | tree-sitter-grade WAT/WASM highlighter, 152 languages, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
 | 2 | Chapters of ~50–100 lines (max 200, configurable) | `chunker.ts` | split hunks at file/function boundaries; keep related hunks in the same function together; config knob for max size |
 | 3 | Attention highlighting (focus / glance / safe) | `classify.ts` | rule pass first (test changes, comments, lockfiles → safe; new auth/money/async/error paths → focus); LLM pass refines, opt-in |
 | 4 | Comments on lines | comments API + frontend gutter click | GitHub-style: click line → inline composer, reply, resolve |
@@ -283,12 +288,13 @@ frontend offers a GitHub/GitLab-style tree browser: click through directories,
 open files read-only. Changed files in a diff link into the explorer at that
 path.
 
-Syntax highlighting is a lightweight zero-dependency tokenizer in the browser
-(`public/highlight.js`): supports JS/TS, Python, Rust, Go, and JSON out of the
-box, with unknown extensions rendering as plain text. Because it works
-line-by-line without requiring full-file AST parses or `.wasm`/`.scm` assets,
-the same highlighter colors file views and diff hunks consistently. Tree-sitter
-(WASM) or an LSP backend is a possible later upgrade behind `highlight.js`.
+Syntax highlighting is provided by `@pierre/highlights` (WAT/WASM,
+152 built-in languages, Zed-compatible themes) rather than a hand-rolled
+tokenizer; unknown extensions render as plain text. The same highlighter
+colors file views and diff hunks consistently because `@pierre/diffs` renders
+both with a shared Shiki/highlights backend and theme. An LSP backend is a
+possible later upgrade; with 152 languages already covered, highlighting is
+no longer a sky-eye problem.
 
 ## 6c. Ref discovery (jj vs git)
 
@@ -336,7 +342,9 @@ sky-eye/
 │   ├── remap.ts        # rebase survival: re-anchor comments
 │   ├── identity.ts     # author name/email from jj/git config
 │   ├── store.ts        # session files: load/save/list/merge-import
-│   └── public/         # index.html, app.js, style.css, highlight.js (no build step)
+│   └── public/         # index.html, app.js, pierre adapter, style.css
+│                       # bundled by esbuild → public/dist/ (frontend-only build;
+│                       # @pierre/* deps are frontend runtime deps, §2)
 ├── .sky-watch/         # one session json per file; kept out of git/jj/docker
 │                       # by ignore-file upkeep at startup (§3, row 0a)
 └── tests/              # chunker + remap fixtures first — that's where the bugs live
@@ -345,7 +353,8 @@ sky-eye/
 ## 9. Milestones
 
 1. **Spine** — diff → chapters → read-only chaptered diff view + file explorer +
-   syntax highlighting in browser; pick base/head, create session; session list screen.
+   syntax highlighting in browser (all via the `@pierre/*` packages, §2); pick
+   base/head, create session; session list screen.
 2. **Comments** — click line, write (with author from jj/git config and
    server-side anchor capture), resolve, deep links, persist, survive reload.
 3. **Rebase survival** — staleness detection, remap pass on session refresh,
@@ -358,11 +367,14 @@ sky-eye/
 ## 10. Deliberate cuts
 
 Auth/multi-user (it's local), markdown rendering in comments, inline image
-attachments, PR-provider integration, LSP/tree-sitter WASM highlighting
-(lightweight tokenizer ships in v1 instead, §6b), diff navigation shortcuts, dark
-mode, per-session identity override, session file locking (save-on-write with
-a `lastWriteAt` conflict check and a warning is enough). All addable later
-without rework.
+attachments, PR-provider integration, LSP semantic highlighting
+(`@pierre/highlights` ships 152 languages of tree-sitter-grade coloring in
+v1, §6b), diff navigation shortcuts, dark mode, per-session identity
+override, session file locking (save-on-write with a `lastWriteAt` conflict
+check and a warning is enough). All addable later without rework.
+
+Also cut: building UI from the `@pierre/*` React entries — sky-eye uses only
+their vanilla JavaScript entries.
 
 ## 11. Known risks
 
@@ -374,3 +386,6 @@ without rework.
   single-user tool, warned on conflict.
 - **jj/git identity fallback** — assumed `jj config get` falls through to git
   config for user identity; verify when building `identity.ts`.
+- **`@pierre/diffs` API churn** — 1.x with active development (`@pierre/trees`
+  is beta). Pin exact versions; the one-adapter-module rule (§2) keeps the
+  churn contained; bump deliberately, not transitively.

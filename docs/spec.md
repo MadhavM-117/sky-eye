@@ -28,15 +28,29 @@ The docs left several "or" choices (D§2). Resolved here:
 |---|---|---|
 | HTTP server | **plain `node:http`** (not Hono) | ~13 routes; a 100-line hand-rolled router beats a dependency. Nothing else in the stack needs a framework. |
 | Language / runtime | **TypeScript, run via Node native type stripping** (`node --experimental-strip-types`, Node ≥ 22.6); `tsc --noEmit` for type checking only | No build step for the server either. If type stripping fights back (enum/namespace/decorators — don't use those), fall back to `tsx` as the single devDependency. |
-| Frontend framework | **None.** Vanilla ES modules, no build step | Per D§2. The UI is one session view + a tree browser + a first screen; a framework buys nothing and costs the build step. |
+| Frontend framework | **No app framework.** Thin vanilla app on top of the `@pierre/*` UI packages (`@pierre/diffs`, `@pierre/trees`; `@pierre/highlights` + `@pierre/theme` transitively) | Pierre's diff renderer already does what sky-eye would otherwise hand-build three times over: two-column rendering, line annotations (comments, attention marks), selection, virtualization. Its file tree has search + git-status badges. Writing our own diff/comment rendering layer is the slowest path to M2. |
+| Frontend bundling | **`esbuild`** (devDependency) bundles `public/` JS → `public/dist/` | The `@pierre/*` dist files are ESM with bare imports (`shiki`, `diff`, `lru_map`, …) that a static file server cannot resolve; a bundle is the robust answer, an import map the brittle one. The *server* keeps its no-build rule (Node native type stripping). |
 | Diff source | **Shell out to the `git` / `jj` CLI**, parse unified diff output | No libgit2/nodegit. The tool already assumes both CLIs exist. |
 | LLM access | **OpenAI-compatible `POST {baseUrl}/chat/completions` via `fetch`** | Matches the config schema's `baseUrl`/`model`/`apiKey` (D§6a); covers OpenAI, Anthropic-compatible gateways, ollama, llama.cpp. No SDK dependency. |
-| Syntax highlighting | **Lightweight zero-dependency tokenizer in `public/highlight.js`** | Works line-by-line on isolated diff hunks and full files alike with no `.wasm` binaries, no `.scm` query files, and no build step. (Tree-sitter WASM or LSP remains a later upgrade path, D§6b.) |
-| Test runner | **`node:test`** (built-in) | Zero dev dependencies; the tests are pure-function fixtures (D§8). |
+| Syntax highlighting | **`@pierre/highlights`** — WAT/WASM tree-sitter-grade highlighter, 152 languages, Zed-compatible themes | Applied by `@pierre/diffs` to rendered diff hunks automatically; same engine colors explorer file views. 152 languages for free replaces a hand-rolled 5-language tokenizer. |
+| Test runner | **`node:test`** (built-in) | No test-specific dependencies; the tests are pure-function fixtures (D§8). |
 | Distribution | npm package with a `bin` entry (`sky-eye`), run inside any repo; server resolves the repo from `process.cwd()` | D/U§1.1: "user runs `sky-eye` inside a repository". |
 
-Package runtime dependencies: **none**. Dev dependencies: `typescript` only
-(plus optionally `tsx`).
+Dependency policy (v1 revision): **server runtime dependencies stay zero**
+(`node:http`, `node:test`, CLIs, `fetch` — all unchanged). **Frontend runtime
+dependencies allowed**, pinned exact: `@pierre/diffs`, `@pierre/trees`, and
+their transitive set (`shiki`, `diff`, `lru_map`, `hast-util-to-html`,
+`@pierre/highlights`, `@pierre/theme`/`@pierre/theming`). Dev dependencies:
+`typescript`, `@types/node`, `esbuild`. Motivation: build speed — the diff
+annotation framework, per-language highlighting, and virtualization would
+otherwise be hand-built inside M1/M2/M5. Source of these packages is vendored
+for reference at `tmp/pierre/packages/` (upstream monorepo, Apache-2.0);
+production builds come from npm.
+
+Isolation rule: exactly one frontend module (the adapter, §18) imports from
+`@pierre/*`; the rest of `public/` stays vanilla ES modules against sky-eye's
+own API shapes. Pin exact versions and bump deliberately — `@pierre/diffs` is
+1.x with active development, `@pierre/trees` is beta.
 
 ## 3. Repository layout
 
@@ -59,14 +73,14 @@ sky-eye/
 │   ├── identity.ts           # author name/email from jj/git config
 │   ├── store.ts              # session files: load/save/list/merge-import, atomic writes
 │   └── llm.ts                # OpenAI-compatible client + config loading (.sky-watch/config.json)
-│   └── public/               # served statically
+│   └── public/               # source; bundled by esbuild → public/dist/ (served statically)
 │       ├── index.html
 │       ├── app.js            # router + views (first screen / session / explorer)
-│       ├── diffview.js       # two-column diff renderer
-│       ├── explorer.js       # tree browser + file view
+│       ├── pierre-adapter.js # the ONLY module importing @pierre/*: maps sky-eye JSON → pierre render input
+│       ├── explorer.js       # explorer view: @pierre/trees FileTree + breadcrumb + side toggle
 │       ├── api.js            # fetch wrapper (adds X-Sky-Eye on non-GET)
-│       ├── highlight.js      # zero-dep line/file syntax tokenizer (JS/TS, Py, Rust, Go, JSON)
-│       └── style.css
+│       └── style.css         # app chrome; diff/tree internals styled by @pierre/theme CSS vars
+├── esbuild.config.mjs        # bundles public/app.js + explorer entries → public/dist/
 ├── tests/
 │   ├── chunker.test.ts       # pure-function fixtures
 │   ├── diffparse.test.ts
@@ -504,33 +518,43 @@ Three views, hash-routed (`#` empty → first screen):
    reviewed toggle, actions: refresh / re-run / export, stale banner, orphan
    banner) → chapters as accordion, **expanded by default**; narrative as a
    plain editable text field above the diff (save → `narrativeEdited`); per-
-   file headings; two-column GitHub-style diff (old left / new right), hunks
-   with context; empty diff → "nothing to review" message.
-3. **Explorer:** breadcrumb tree navigation, read-only file view with the
-   same highlighter, head/base side toggle within a session; changed files
-   in chapters link here.
+   file headings; per chapter, a `@pierre/diffs` `FileDiff` (split style, one
+   file) renders the two-column diff with hunks + context. Attention marks
+   and comments attach through FileDiff's **line-annotation framework** (the
+   same mechanism Pierre's own review UI uses) — no hand-built DOM overlays;
+   gutter clicks use its selection API. Empty diff → "nothing to review"
+   message.
+3. **Explorer:** breadcrumb + head/base side toggle (sky-eye) around an
+   `@pierre/trees` `FileTree` (directory navigation, search, git-status
+   badges on changed files via `setGitStatus`); read-only file view rendered
+   by `@pierre/diffs` `File` / `CodeView`. Changed files in chapters link here.
+
+**Pierre adapter (`pierre-adapter.js`):** maps sky-eye's server JSON
+(`Session`, `Hunk`, `DiffLine`, `LineMark`, `Comment`) onto the shapes
+`FileDiff`/`FileTree` expect, and translates selection/annotation events
+back into API calls. The only module that knows pierre's types.
 
 Data flow: `api.js` wraps fetch (adds `X-Sky-Eye` on non-GET, propagates
 409s); views re-render from fetched session JSON; no client state worth
 syncing. Diff rendering is the perf-sensitive path — chapters render lazily
 on first expansion if the session has >N chapters (N ≈ 50; see Open
-Questions).
+Questions); `@pierre/diffs` ships virtualized file components as the
+down-payment on large diffs.
 
 ## 19. Syntax highlighting (D§3 row 1a, D§6b)
 
-- `public/highlight.js` provides a lightweight, zero-dependency syntax
-  tokenizer in vanilla ES modules (no `.wasm` binaries, no `.scm` query
-  files, no build step).
-- **v1 language set:** JavaScript/TypeScript, Python, Rust, Go, JSON
-  (keywords, strings, comments, numbers, types, punctuation). Unknown
-  extensions render as plain escaped text.
-- Because it operates line-by-line (with lightweight multi-line comment/string
-  state across contiguous hunks and files), the exact same highlighter colors
-  full file views in the explorer and isolated diff lines in chapters without
-  needing full-file AST parses for every diffed file.
-- Upgrading to `web-tree-sitter` WASM + `.scm` queries or an LSP backend
-  remains a drop-in replacement behind `highlight.js` if deeper semantic
-  coloring is ever needed later.
+- Provided by **`@pierre/highlights`** (WAT/WASM; 152 built-in languages;
+  Zed-compatible themes; runs synchronously after import). No hand-rolled
+  tokenizer — `public/highlight.js` is deleted in favor of it.
+- In v1 sky-eye never calls the highlighter directly: `@pierre/diffs`
+  highlights rendered diff hunks, file views, and code lines as part of its
+  rendering, using a shared Shiki/highlights backend and theme. One engine,
+  one theme, consistent colors across chapter diffs and explorer views.
+- Theme: `@pierre/theme` drives diff + file coloring; sky-eye maps its CSS
+  custom properties into app chrome (process.md foundations). Dark mode
+  remains cut in v1, but the theming system makes it cheap later.
+- Unknown extensions render as plain escaped text (pierre's default).
+- An LSP backend remains a later upgrade, unchanged.
 
 ## 20. Testing strategy (D§8)
 
@@ -561,8 +585,8 @@ The docs' 7 milestones (D§9), made concrete. Each ends in a demoable state.
 ignore upkeep; `refs.ts`; `tree.ts` (`/api/tree`, `/api/file`); `diff.ts`;
 `chunker.ts` (basic size splitting); session store; `POST/GET/PATCH sessions`;
 first screen + session view with chaptered two-column diff + file explorer
-view (`explorer.js`) + syntax highlighting (`highlight.js`); binary/empty-diff
-handling.
+view + syntax highlighting — all rendering via the `@pierre/*` bundles (§18,
+§19); binary/empty-diff handling.
 *Accept:* run `sky-eye` in a git and a colocated jj repo; pick base; see
 highlighted chapters and browse repo files at base/head; edit narrative/label
 and reload; a second browser tab cannot CSRF mutations; `.sky-watch/` ignored
@@ -626,9 +650,10 @@ milestone starts:
    *content*, not line ranges — cheap to change now, expensive later.
 4. **Default port & configurability.** 4800 assumed from U§1.1's example.
    Should there be a `--port` flag / env var, or is scan-upward enough?
-5. **Large diffs.** No pagination anywhere. Chapters render lazily (§18),
-   but a 5,000-line diff in one session may still crawl. Decide at M4
-   whether per-file virtualization is needed or the accordion is enough.
+5. **Large diffs.** No pagination anywhere. Chapters render lazily (§18);
+   `@pierre/diffs` ships `VirtualizedFileDiff`/`VirtualizedFile`, so per-file
+   virtualization is a component swap, not a build effort. Decide at M4
+   whether the accordion needs it or lazy expansion is enough.
 6. **Base-side semantics for user-picked bases.** Default base uses
    merge-base semantics (`base...head`). When the user picks an arbitrary
    commit as base, is that also three-dot, or literal two-dot? Three-dot
