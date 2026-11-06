@@ -12,3 +12,8 @@ running entirely on your machine). Before working in this repo:
    written *before* implementation.
 4. This is a jj repo: conventional commits, working copy described and a new
    change started at each task boundary.
+5. During implementation, record what you learnt (patterns decided, gotchas,
+   tooling quirks) as brief bullets in `.implementation/learnings/<topic>.md`
+   — see `.implementation/learnings/index.md` for the format. Check the index
+   when a task touches a topic listed there; don't read learning files
+   speculatively.
