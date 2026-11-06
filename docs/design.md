@@ -27,25 +27,24 @@ files you can export and share.
                                      .sky-watch/<session-id>.json
 ```
 
-- **Server**: one small HTTP server (Node + Hono or plain `node:http`),
+- **Server**: one small HTTP server (plain `node:http`),
   serves the static frontend plus a handful of JSON endpoints. On startup:
-  bind the preferred port, scan upward through user-space ports (>1024) on
-  `EADDRINUSE`; print `serving <repo-root> (<kind> repo) → <url>`; open the
-  browser (`xdg-open`/`open`).
-- **Not open by design**: no auth (it's local), but "local" means this
-  browser, not this tab — any webpage the user visits can send requests to
-  the localhost port. So: reject requests whose `Host` header is not this
-  server's host:port, and require a custom header (`X-Sky-Eye: 1`) on every
-  non-GET request — browsers cannot attach custom headers cross-origin
-  without a passing preflight, which kills drive-by CSRF.
+  bind the preferred port on `127.0.0.1`, scan upward through user-space
+  ports (>1024) on `EADDRINUSE`; print `serving <repo-root> (<kind> repo) → <url>`;
+  open the browser (`xdg-open`/`open`).
+- **Not open by design**: no auth (it's local), bound strictly to `127.0.0.1`
+  so other machines on the LAN cannot connect. Because "local" still means
+  any webpage open in the user's browser can send requests to localhost, the
+  server rejects requests whose `Host` header is not `localhost:<port>` or
+  `127.0.0.1:<port>`, and requires `X-Sky-Eye: 1` on every non-GET request —
+  browsers cannot attach custom headers cross-origin without a passing
+  preflight, which kills drive-by CSRF.
 - **Frontend**: single-page, no build step — plain JS ES modules in
   `public/`, calling the JSON API. Left column old code, right column new,
   like GitHub. The interesting logic (diff parsing, chunking, remap) is
   server-side TypeScript in `src/`; the browser gets data, not logic.
-  Highlighting is the one browser-side module (`public/highlight.js` +
-  vendored tree-sitter WASM grammars, §6b). If vendoring grammars proves too
-  clumsy in practice, the fallback is esbuild — that would be a build step;
-  decide then, not now.
+  Highlighting is a lightweight zero-dependency browser tokenizer in
+  `public/highlight.js` (§6b).
 - **State**: one JSON file per review session in `.sky-watch/` (see §4). The
   export file *is* this file.
 - **Paths are relative**: all file paths in session JSON and API responses
@@ -57,11 +56,11 @@ files you can export and share.
 | # | Requirement | Component | Notes |
 |---|---|---|---|
 | 0 | Repo detection + ref discovery | `refs.ts` | `.jj` dir → jj mode (colocated: jj wins), else git mode; `GET /api/refs` returns root/kind, current head, default base, bookmarks/branches, recent commits; discovery gaps → 200 with empty lists, never errors |
-| 0a | Ignore-file upkeep | startup step | ensure `.sky-watch/` is ignored: append to `.gitignore` (also honored by jj) and `.dockerignore` if not already present |
+| 0a | Ignore-file upkeep | startup step | ensure `.sky-watch/` is ignored: append to `.gitignore` (created if missing; also honored by jj) and to `.dockerignore` (only if `.dockerignore` already exists) |
 | 0b | File explorer | `tree.ts` + frontend | GitHub/GitLab-style repo tree browsing and read-only file viewing (§6b) |
 | 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines, per-file tabs or accordion |
-| 1a | Syntax highlighting | `public/highlight.js` | tree-sitter (WASM) in the browser, grammars loaded on demand, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
-| 2 | Chapters of ~50–100 lines (max 200, configurable) | `chunker.ts` | split hunks at file/function boundaries; keep related hunks together (same function, rename pairs); config knob for max size |
+| 1a | Syntax highlighting | `public/highlight.js` | zero-dependency syntax tokenizer in the browser, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
+| 2 | Chapters of ~50–100 lines (max 200, configurable) | `chunker.ts` | split hunks at file/function boundaries; keep related hunks in the same function together; config knob for max size |
 | 3 | Attention highlighting (focus / glance / safe) | `classify.ts` | rule pass first (test changes, comments, lockfiles → safe; new auth/money/async/error paths → focus); LLM pass refines, opt-in |
 | 4 | Comments on lines | comments API + frontend gutter click | GitHub-style: click line → inline composer, reply, resolve |
 | 5 | Local persistence + single-file export | per-session JSON files; export = copy of the file, import = load + merge by session ID | re-verify guards against importing a review of a different commit |
@@ -93,16 +92,16 @@ Each side of the key is the repo's **stable revision id**:
 
 Consequences:
 
-- jj working-copy edits (saving files) never invalidate the session key; the
-  diff is rebuilt and shown as-is on open.
-- A jj rebase preserves change ids, so the key survives it: the session
-  becomes "same key, changed diff" and goes through the refresh flow (stale
-  banner + remap pass, §6.1). The supersede flow only applies when the key
-  itself breaks.
-- A git rebase rewrites commit ids → new session id → §6.2 supersede flow.
+- A jj working-copy edit or rebase preserves change ids, so the session key
+  survives: the session becomes "same key, changed diff" and goes through the
+  refresh flow (stale banner + remap pass, §6.1). Never auto-refresh silently
+  on open.
+- A git amend or rebase rewrites commit ids: the server detects that the
+  session's `headRef` (branch name) now points to a new commit id → stale
+  banner → §6.2 supersede flow (new session id, old marked `supersededBy`).
 
-Branch names encountered at creation time are stored as `aliases` for lookup
-only.
+Branch names encountered at creation time are stored as `baseRef` / `headRef`
+and `aliases`.
 
 Multiple sessions exist side by side — one file per session under
 `.sky-watch/`, no locking between them.
@@ -112,8 +111,13 @@ Multiple sessions exist side by side — one file per session under
 ```ts
 Session {
   id:         SessionId
+  base:       string            // resolved stable revision id for base
+  head:       string            // resolved stable revision id for head
+  baseRef?:   string            // symbolic branch/bookmark name at creation
+  headRef?:   string            // symbolic branch/bookmark name at creation
+  diffDigest: string            // sha256 of normalized diff text at build time
   aliases:    string[]          // branch names seen when created, e.g. ["main...feature/x"]
-  createdAt, updatedAt
+  createdAt, updatedAt, lastWriteAt
   meta:       { repo, exportedBy }   // repo = repo root at creation, display only;
                                      // all stored file paths are repo-relative (§2)
   label?:     string            // human name, e.g. "the auth refactor"
@@ -124,8 +128,10 @@ Session {
 }
 
 Chapter {
-  id: string                    // stable hash of file + hunk range
-  files: [{ path, oldStart, newStart, lines }]
+  id: string                    // stable hash of file + first hunk old/new ranges
+  file: string                  // repo-relative file path
+  status: "modified" | "added" | "deleted"
+  hunks: Hunk[]
   narrative: string             // what's happening here (LLM, "unanalyzed", or human-written)
   narrativeEdited?: boolean     // set when a human edited the narrative; a re-run
                                 // must confirm before overwriting it
@@ -133,11 +139,12 @@ Chapter {
 }
 
 Comment {
-  id, chapterId, file, side: "old"|"new", line, text, createdAt
+  id, chapterId, file, side: "old"|"new", line, text, createdAt, updatedAt
   author: { name, email } | null   // from git/jj config; null → shown as "anonymous"
   resolved: boolean
   resolvedAt?: timestamp
   priority?:  "nit" | "must-fix"  // unset → normal comment
+  orphaned?:  boolean           // set when remap cannot place the comment in any new diff hunk
   anchor: Anchor                // content anchor for rebase survival (§6)
 }
 
@@ -177,18 +184,18 @@ GET  /api/tree                      → directory listing at a ref (repo-relativ
 GET  /api/file                      → file content at a ref, head or base side
                                       (repo-relative path)
 POST /api/sessions                  → create from {base, head} (or current branch vs default)
-POST /api/comments                  → add comment (session id in URL/body)
-PATCH /api/sessions/:id             → set label / reviewed flag
-PATCH /api/comments/:id             → edit / resolve / re-pin anchor / set priority
+POST /api/comments                  → add comment (sessionId in body; server captures anchor)
+PATCH /api/sessions/:id             → set label / reviewed flag / chapter narrative
+PATCH /api/comments/:id             → edit / resolve / re-pin anchor / set priority (sessionId in body)
 POST /api/sessions/:id/rerun        → narrative/classification for one chapter;
                                       performs the first generation when none exists
 POST /api/sessions/:id/refresh      → head moved with same base: rebuild diff,
                                       carry over comments via the §6 remap pass
-                                      (supersede flow, new session id)
+                                      (in-place for jj, supersede flow for git)
 GET  /api/sessions/:id/export       → download the session's json
 POST /api/import                    → import; merges into the session with the same ID
                                       (merge rule: match comments by id, newer
-                                      timestamp wins per comment, nothing deleted)
+                                      updatedAt timestamp wins per comment, nothing deleted)
 ```
 
 ## 6. Comment carry-over across rebase
@@ -200,12 +207,13 @@ shift. Comments survive via **content anchors**:
    user clicks "refresh review?", or an import brings a changed diff. Never
    silently on open: opening a stale session only shows the banner. Each
    comment's anchor is searched for in the *new* version of the file:
-   - Exact `text` match near the old line number → re-pin. (Common case:
-     lines above the change didn't move.)
+   - Exact `text` match near the old line number → candidate line.
    - Multiple candidates → score by `before`/`after` context matches; best
      score wins.
-   - No match (commented line edited away, file renamed) → comment becomes
-     **orphaned**: keeps its old anchor, stays visible, shows in triage.
+   - If the matched line falls inside a hunk of the rebuilt chapters → re-pin.
+   - No match (commented line edited away, file renamed) or matched line now
+     sits outside all diff hunks → comment becomes **orphaned**: keeps its
+     old anchor, stays visible, shows in triage.
 2. **Session identity**: a rebase that breaks the session key (git mode;
    jj keys survive rebases, §4) produces a new session ID. No silent
    merge — the old session is marked `supersededBy: <newId>` and its
@@ -265,21 +273,22 @@ How a chapter summary is produced:
 
 ## 6b. File explorer and syntax highlighting
 
-`GET /api/tree?ref=…&dir=…` lists a directory at a ref (head or base side);
-`GET /api/file?ref=…&path=…` returns file content. **Path containment:** both
-resolve the requested path against the repo root and reject anything that
-resolves outside it — `..` segments, absolute paths, and symlinks escaping
-the repo (`fs.realpath` containment check). The frontend offers a
-GitHub/GitLab-style tree browser: click through directories, open files
-read-only. Changed files in a diff link into the explorer at that path.
+`GET /api/tree?ref=…&dir=…` lists a directory at a ref (head or base side)
+from the VCS object store; `GET /api/file?ref=…&path=…` returns file content
+at that ref from the VCS object store (so deleted or moved files still render
+on the `base` side). **Path containment:** both normalize the requested
+repo-relative path with `path.posix.normalize` and reject anything that escapes
+the repo root (`..` segments, leading `/` or `-`, backslashes, NUL bytes). The
+frontend offers a GitHub/GitLab-style tree browser: click through directories,
+open files read-only. Changed files in a diff link into the explorer at that
+path.
 
-Syntax highlighting is a tree-sitter (WASM) highlighter in the browser
-(`public/highlight.js`): per-language grammars fetched on demand and cached;
-unknown extensions render as plain text. The same highlighter colors file
-views and diff lines so both stay consistent. An LSP backend is a possible
-later upgrade (semantic accuracy at the cost of a per-language server);
-tree-sitter alone is the v1 commitment — this reverses the earlier
-"simple tokenizer or none" cut.
+Syntax highlighting is a lightweight zero-dependency tokenizer in the browser
+(`public/highlight.js`): supports JS/TS, Python, Rust, Go, and JSON out of the
+box, with unknown extensions rendering as plain text. Because it works
+line-by-line without requiring full-file AST parses or `.wasm`/`.scm` assets,
+the same highlighter colors file views and diff hunks consistently. Tree-sitter
+(WASM) or an LSP backend is a possible later upgrade behind `highlight.js`.
 
 ## 6c. Ref discovery (jj vs git)
 
@@ -327,8 +336,7 @@ sky-eye/
 │   ├── remap.ts        # rebase survival: re-anchor comments
 │   ├── identity.ts     # author name/email from jj/git config
 │   ├── store.ts        # session files: load/save/list/merge-import
-│   └── public/         # index.html, app.js, style.css, highlight.js +
-│                       #   vendored tree-sitter WASM grammars (no build step)
+│   └── public/         # index.html, app.js, style.css, highlight.js (no build step)
 ├── .sky-watch/         # one session json per file; kept out of git/jj/docker
 │                       # by ignore-file upkeep at startup (§3, row 0a)
 └── tests/              # chunker + remap fixtures first — that's where the bugs live
@@ -336,22 +344,22 @@ sky-eye/
 
 ## 9. Milestones
 
-1. **Spine** — diff → chapters → read-only chaptered diff view in browser;
-   pick base/head, create session; session list screen.
-2. **Comments** — click line, write (with author from jj/git config), resolve,
-   persist, survive reload.
-3. **Rebase survival** — anchor capture on every comment write, remap pass on
-   session open, orphan triage banner.
+1. **Spine** — diff → chapters → read-only chaptered diff view + file explorer +
+   syntax highlighting in browser; pick base/head, create session; session list screen.
+2. **Comments** — click line, write (with author from jj/git config and
+   server-side anchor capture), resolve, deep links, persist, survive reload.
+3. **Rebase survival** — staleness detection, remap pass on session refresh,
+   orphan triage banner, git supersede flow.
 4. **Chunker tuning** — function-boundary splits, size limits, config knob.
 5. **Rule-based attention marks.**
-6. **Export/import** with merge-on-import and chapter-ID re-verification.
+6. **Export/import** with merge-on-import (`updatedAt` wins) and digest re-verification.
 7. **LLM narratives + refined classification**, opt-in.
 
 ## 10. Deliberate cuts
 
 Auth/multi-user (it's local), markdown rendering in comments, inline image
-attachments, PR-provider integration, LSP-backed highlighting (tree-sitter ships in v1
-instead, §6b), diff navigation shortcuts, dark
+attachments, PR-provider integration, LSP/tree-sitter WASM highlighting
+(lightweight tokenizer ships in v1 instead, §6b), diff navigation shortcuts, dark
 mode, per-session identity override, session file locking (save-on-write with
 a `lastWriteAt` conflict check and a warning is enough). All addable later
 without rework.

@@ -1,1 +1,4 @@
 tmp/
+
+.sky-watch/
+node_modules/

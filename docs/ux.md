@@ -13,11 +13,11 @@ User runs `sky-eye` inside a repository. The tool:
 1. Detects the repo root and kind (see 1.2). Not in a repo → clear terminal
    error, no browser opens.
 2. Ensures its state folder `.sky-watch/` inside the repo is ignored:
-   appended to `.gitignore` (jj honors gitignore too) and `.dockerignore`
-   if not already present.
-3. Starts the local server on its preferred port; if that port is taken
-   (`EADDRINUSE`), it scans upward through user-space ports (>1024) until
-   one binds.
+   appended to `.gitignore` (created if missing; jj honors gitignore too) and,
+   if `.dockerignore` exists, to `.dockerignore`.
+3. Starts the local server bound to `127.0.0.1` on its preferred port; if that
+   port is taken (`EADDRINUSE`), it scans upward through user-space ports
+   (>1024) until one binds.
 4. Prints one line to the terminal:
    `sky-eye serving /path/to/repo (jj repo) → http://localhost:4800`
 5. Opens the browser at that URL automatically (`xdg-open` / `open`).
@@ -90,7 +90,7 @@ header at any time:
 
 - Directory listing navigable by clicking; breadcrumb at the top.
 - Files open **read-only**, rendered with the same syntax highlighting as
-  the diff view (tree-sitter; unknown file types show as plain text).
+  the diff view (unknown file types show as plain text).
 - The tree can be shown at the head or base side of a session, so the user
   can compare "how this file looked before" against the diff.
 - Changed files inside a diff chapter link to their explorer view.
@@ -123,11 +123,9 @@ read top to bottom; collapsing is an optimization, not the default).
   editable text field — the LLM generates a draft on first expansion, the
   user can rewrite or write it from scratch at any time. A re-run that would
   overwrite a human-edited narrative asks first.
-- Below it: file path headings, GitHub-style two-column diff (old left, new
-  right), hunks with context lines. Files inside a chapter are stacked
-  vertically. Code is syntax-highlighted via tree-sitter (WASM, grammars
-  loaded per language on demand, plain-text fallback) — file views and diff
-  lines use the same highlighter.
+- Below it: the file path heading, GitHub-style two-column diff (old left, new
+  right), hunks with context lines. Code is syntax-highlighted (`public/highlight.js`,
+  plain-text fallback) — file views and diff lines use the same highlighter.
 - **Deep links**: hovering a diff line or comment exposes a copy-link
   (local URL fragment). Opening one scrolls to and highlights the target;
   links survive export/import and break on rebase like everything else
