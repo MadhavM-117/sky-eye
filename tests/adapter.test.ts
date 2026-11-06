@@ -3,8 +3,8 @@
 // double as the upgrade smoke test (pierre-packages.md upgrade procedure).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fileDiffMetadata, patchText, selectionSide } from "../src/public/pierre-adapter.js";
-import type { Hunk } from "../src/types.ts";
+import { commentAnnotations, fileDiffMetadata, patchText, selectionSide } from "../src/public/pierre-adapter.js";
+import type { Comment, Hunk } from "../src/types.ts";
 
 // adapter input shape: {path, status} + hunks
 const modified = { path: "src/app.ts", status: "modified" } as const;
@@ -116,4 +116,56 @@ test("selectionSide: pierre deletions/additions → sky-eye old/new", () => {
   assert.equal(selectionSide({ start: 1, end: 2, side: "deletions" }), "old");
   assert.equal(selectionSide({ start: 1, end: 2, side: "additions" }), "new");
   assert.equal(selectionSide({ start: 1, end: 2 }), "new"); // additions is the default side
+  // gutter-click props use annotationSide (M2 composer path)
+  assert.equal(selectionSide({ annotationSide: "deletions" }), "old");
+});
+
+// comment→annotation projection (M2). Comment fixtures only need the fields
+// the projection reads.
+const comment = (over: Partial<Comment>): Comment => ({
+  id: "c1",
+  chapterId: "ch1",
+  file: "a.ts",
+  side: "new",
+  line: 3,
+  text: "hi",
+  createdAt: 1,
+  updatedAt: 1,
+  author: null,
+  resolved: false,
+  anchor: { file: "a.ts", side: "new", line: 3, text: "x", before: [], after: [], chapterId: "ch1" },
+  ...over,
+});
+
+test("commentAnnotations: sides map onto pierre deletions/additions", () => {
+  const out = commentAnnotations([
+    comment({ line: 3 }),
+    comment({ side: "old", line: 2 }),
+  ]);
+  assert.deepEqual(out, [
+    { side: "additions", lineNumber: 3, metadata: { comments: [comment({ line: 3 })], composer: null } },
+    { side: "deletions", lineNumber: 2, metadata: { comments: [comment({ side: "old", line: 2 })], composer: null } },
+  ]);
+});
+
+test("commentAnnotations: multiple comments on one line group into one row", () => {
+  const [only] = commentAnnotations([comment({ line: 5 }), comment({ id: "c2", line: 5 })]);
+  assert.equal(only.metadata.comments.length, 2);
+  assert.equal((only.metadata.comments[1] as Comment).id, "c2");
+});
+
+test("commentAnnotations: composer joins the comments on its line (marker entry)", () => {
+  const [row] = commentAnnotations([comment({ line: 3 })], { side: "new", line: 3 });
+  assert.equal(row.metadata.comments.length, 2);
+  assert.deepEqual(row.metadata.comments[1], { composer: true });
+  const [solo] = commentAnnotations([], { side: "old", line: 7 });
+  assert.deepEqual(solo, {
+    side: "deletions",
+    lineNumber: 7,
+    metadata: { comments: [{ composer: true }], composer: null },
+  });
+});
+
+test("commentAnnotations: nothing to show → no annotations", () => {
+  assert.deepEqual(commentAnnotations([]), []);
 });

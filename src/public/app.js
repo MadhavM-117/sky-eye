@@ -1,6 +1,17 @@
 // Hash router + first screen + session view (spec §18, U§1.5, U§3).
+// Comments (M2, design A): inline annotation rows under the clicked line,
+// rendered through pierre's annotation framework via the adapter.
 import { get, mut } from "./api.js";
-import { createFileDiff, initPierre } from "./pierre-adapter.js";
+import {
+  commentAnnotations,
+  createFileDiff,
+  initPierre,
+  queryComment,
+  queryRow,
+  selectionSide,
+  updateAnnotations,
+} from "./pierre-adapter.js";
+import { commentNode, composerNode } from "./comments.js";
 
 // highlighter must be loaded before FileDiff renders anything; await it
 // (best-effort: if it fails, diffs falls back to unhighlighted text)
@@ -9,7 +20,8 @@ import { renderExplorer } from "./explorer.js";
 
 const app = document.getElementById("app");
 
-// hash forms: "" | "#<sid>" | "#<sid>/explorer/<encPath>§<side>"
+// hash forms (spec §17): "" | "#<sid>" | "#<sid>/<commentId>"
+//   | "#<sid>/<chapterId>/<encFile>/<line>" | "#<sid>/explorer/<encPath>§<side>"
 // (paths are percent-encoded, so no raw slashes inside the encoded part)
 function parseHash() {
   const h = location.hash.slice(1);
@@ -23,7 +35,19 @@ function parseHash() {
     const side = sep === -1 || !rest.slice(sep + 1) ? "head" : rest.slice(sep + 1);
     return { view: "explorer", sid, path: decodeURIComponent(encPath), side };
   }
-  return h ? { view: "session", sid: h } : { view: "first" };
+  if (!h) return { view: "first" };
+  const parts = h.split("/");
+  if (parts.length === 4)
+    return {
+      view: "session",
+      sid: parts[0],
+      chapterId: parts[1],
+      file: decodeURIComponent(parts[2]),
+      line: Number(parts[3]),
+      target: "line",
+    };
+  // second segment: a comment id, else a chapter id (scroll to chapter)
+  return { view: "session", sid: parts[0], target: parts.length > 1 ? parts[1] : null };
 }
 
 function esc(s) {
@@ -45,7 +69,7 @@ async function render() {
       });
     }
     const session = await get(`/api/sessions/${encodeURIComponent(route.sid)}`);
-    renderSession(session);
+    renderSession(session, route);
   } catch (e) {
     app.innerHTML = `<div class="banner error">error: ${esc(e?.error ?? e?.message ?? e)}</div>
       <a href="#">← back to the first screen</a>`;
@@ -126,10 +150,11 @@ const short = (id) => (id.length > 12 ? id.slice(0, 12) : id);
 
 // ---- session view ------------------------------------------------------
 
-function renderSession(session) {
+function renderSession(session, route = null) {
   shell(session.label ?? session.id, "");
   const headLabel = session.headRef ?? short(session.head);
   const baseLabel = session.baseRef ?? short(session.base);
+  const openCount = session.comments.filter((c) => !c.resolved).length;
 
   const chaptersHtml =
     session.chapters.length === 0
@@ -145,13 +170,27 @@ function renderSession(session) {
       <span class="session-title" id="session-label" title="click to rename">${esc(session.label ?? session.id)}</span>
       <span class="aliases">${esc(session.aliases.join(" "))}</span>
       <span class="meta">${baseLabel} → ${headLabel}</span>
+      <span class="meta" id="open-count">${openCount} open comments</span>
       <label class="reviewed-toggle"><input type="checkbox" id="reviewed" ${session.reviewed ? "checked" : ""}/> reviewed</label>
       <a class="explorer-link" href="#${esc(session.id)}/explorer//head">files</a>
     </header>
     <div class="chapters">${chaptersHtml}</div>`);
 
-  wireSession(session);
+  wireSession(session, route);
 }
+
+const copyLink = (fragment) => {
+  const url = location.href.split("#")[0] + "#" + fragment;
+  navigator.clipboard.writeText(url).catch(() => alert(url));
+};
+
+const handleMutError = (e) => {
+  if (e?.status === 409) {
+    if (confirm("session changed elsewhere — reload?")) location.reload();
+    return;
+  }
+  alert(e?.error ?? "could not save");
+};
 
 const badge = (session) =>
   session.meta.repo.split("/").slice(-1)[0] + " review";
@@ -181,15 +220,165 @@ function chapterHtml(session, c, index) {
   </section>`;
 }
 
-function wireSession(session) {
+function wireSession(session, route = null) {
   let current = session;
+  // one composer at a time (design A); diffs holds pierre instances per chapter
+  const composer = { state: null };
+  const diffs = new Map();
+
+  const refetch = async () => {
+    current = await get(`/api/sessions/${encodeURIComponent(current.id)}`);
+    const el = document.getElementById("open-count");
+    if (el)
+      el.textContent = `${current.comments.filter((c) => !c.resolved).length} open comments`;
+    refreshAll();
+    return current;
+  };
+  const refreshAll = () => {
+    for (const [chapterId, inst] of diffs) {
+      const chapter = current.chapters.find((c) => c.id === chapterId);
+      if (chapter) updateAnnotations(inst, annotationsFor(chapter));
+    }
+  };
+  const annotationsFor = (chapter) =>
+    commentAnnotations(
+      current.comments.filter((c) => c.chapterId === chapter.id),
+      composer.state?.chapterId === chapter.id ? composer.state : null,
+    );
+
+  const postComment = async (chapter, text, priority) => {
+    if (!text.trim()) return;
+    const state = composer.state;
+    composer.state = null;
+    try {
+      await mut("POST", "/api/comments", {
+        sessionId: current.id,
+        chapterId: chapter.id,
+        file: chapter.file,
+        side: state.side,
+        line: state.line,
+        text,
+        priority: priority || undefined,
+        lastWriteAt: current.lastWriteAt,
+      });
+      await refetch();
+    } catch (e) {
+      handleMutError(e);
+      composer.state = state; // keep the draft on failure
+      refreshAll();
+    }
+  };
+  const patchComment = async (comment, body) => {
+    try {
+      await mut("PATCH", `/api/comments/${encodeURIComponent(comment.id)}`, {
+        sessionId: current.id,
+        lastWriteAt: current.lastWriteAt,
+        ...body,
+      });
+      await refetch();
+    } catch (e) {
+      handleMutError(e);
+      refreshAll(); // restore the row from server truth
+    }
+  };
+
+  // annotation row for one diff line: stored comments + optional composer
+  const annotationRow = (annotation, chapter) => {
+    const row = document.createElement("div");
+    row.className = "sky-comment-row";
+    for (const entry of annotation.metadata.comments) {
+      if (entry.composer) {
+        row.append(
+          composerNode(composer.state, {
+            onSubmit: (text, priority) => postComment(chapter, text, priority),
+            onCancel: () => {
+              composer.state = null;
+              refreshAll();
+            },
+          }),
+        );
+      } else {
+        row.append(
+          commentNode(entry, {
+            onResolve: (comment, resolved) => patchComment(comment, { resolved }),
+            onEdit: (comment, text) => patchComment(comment, { text }),
+            onCopy: (comment) => copyLink(`#${current.id}/${comment.id}`),
+          }),
+        );
+      }
+    }
+    return row;
+  };
 
   document.querySelectorAll(".diff-holder").forEach((holder) => {
     const chapter = current.chapters.find((c) => c.id === holder.dataset.chapter);
-    const diff = createFileDiff({ path: chapter.file, status: chapter.status }, chapter.hunks);
-    if (diff) holder.appendChild(diff.el);
-    else holder.innerHTML = `<div class="banner">binary file — no textual diff</div>`;
+    const diff = createFileDiff(
+      { path: chapter.file, status: chapter.status },
+      chapter.hunks,
+      {
+        annotations: annotationsFor(chapter),
+        // gutter click → composer at that line (toggle on same line)
+        onLineNumberClick: ({ lineNumber, annotationSide }) => {
+          const side = selectionSide({ annotationSide });
+          const same =
+            composer.state?.chapterId === chapter.id &&
+            composer.state.side === side &&
+            composer.state.line === lineNumber;
+          composer.state = same ? null : { chapterId: chapter.id, side, line: lineNumber };
+          refreshAll();
+        },
+        renderAnnotation: (annotation) => annotationRow(annotation, chapter),
+        // hover copy-link in the gutter (U§3.2); click callback gets the range
+        renderGutterUtility: () => {
+          const b = document.createElement("button");
+          b.className = "sky-copy-link";
+          b.textContent = "#";
+          b.title = "copy deep link to this line";
+          return b;
+        },
+        onGutterUtilityClick: (range) =>
+          copyLink(
+            `#${current.id}/${chapter.id}/${encodeURIComponent(chapter.file)}/${range.start}`,
+          ),
+      },
+    );
+    if (diff) {
+      diffs.set(chapter.id, diff);
+      holder.appendChild(diff.el);
+    } else holder.innerHTML = `<div class="banner">binary file — no textual diff</div>`;
   });
+
+  // deep links (spec §17): scroll to + flash the target; retry because lazy
+  // grammar loading can re-render rows after the first pass
+  if (route?.target) {
+    const tryScroll = (find) => {
+      let tries = 0;
+      const tick = () => {
+        const target = find();
+        if (target) {
+          target.scrollIntoView({ block: "center" });
+          target.classList.add("sky-flash");
+          return;
+        }
+        if (++tries < 20) setTimeout(tick, 100);
+      };
+      tick();
+    };
+    if (route.target === "line") {
+      const chapter = current.chapters.find((c) => c.id === route.chapterId);
+      if (chapter)
+        tryScroll(() =>
+          queryRow(diffs.get(chapter.id), "new", route.line) ??
+          queryRow(diffs.get(chapter.id), "old", route.line),
+        );
+    } else if (current.comments.some((c) => c.id === route.target)) {
+      const comment = current.comments.find((c) => c.id === route.target);
+      tryScroll(() => queryComment(diffs.get(comment.chapterId), comment.id));
+    } else {
+      const chapter = current.chapters.find((c) => c.id === route.target);
+      diffs.get(chapter?.id)?.el.scrollIntoView({ block: "start" });
+    }
+  }
 
   document.querySelectorAll(".collapse").forEach((btn) => {
     btn.onclick = () => btn.closest(".chapter").classList.toggle("collapsed");

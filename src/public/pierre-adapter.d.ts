@@ -1,6 +1,6 @@
 // Minimal declarations for the plain-JS frontend adapter (public/ is vanilla
 // ES modules per spec §18; these types exist so TS tests can import it).
-import type { Chapter, FileDiff } from "../types.ts";
+import type { Chapter, Comment, FileDiff } from "../types.ts";
 
 // `file` is {path, status}; app.js passes {path: chapter.file, status: chapter.status}.
 type DiffFile = Pick<FileDiff, "path" | "status">;
@@ -26,8 +26,42 @@ export declare function fileDiffMetadata(
 export declare function createFileDiff(
   file: DiffFile,
   hunks: Chapter["hunks"],
-  opts?: { onSelectionChange?: (range: unknown) => void },
+  opts?: {
+    onSelectionChange?: (range: unknown) => void;
+    onLineNumberClick?: (props: { lineNumber: number; annotationSide: string }) => void;
+    onGutterUtilityClick?: (range: { start: number; side?: string }) => void;
+    renderGutterUtility?: () => HTMLElement;
+    renderAnnotation?: (annotation: unknown) => HTMLElement;
+    annotations?: unknown[];
+  },
 ): { el: HTMLElement; fileDiff: unknown; dispose: () => void } | null;
+
+export declare function updateAnnotations(
+  diff: { el: HTMLElement; fileDiff: unknown },
+  annotations: unknown[],
+): void;
+
+// Comment projection: comments grouped per (side, line) into side-aware
+// annotation rows; an open composer joins its line as a marker entry.
+export declare function commentAnnotations(
+  comments: Comment[],
+  composer?: { side: "old" | "new"; line: number } | null,
+): {
+  side: "deletions" | "additions";
+  lineNumber: number;
+  metadata: { comments: (Comment | { composer: true })[]; composer: null };
+}[];
+
+// Deep-link targets inside pierre's shadow DOM.
+export declare function queryRow(
+  diff: { el: HTMLElement } | null | undefined,
+  side: "old" | "new",
+  line: number,
+): Element | null;
+export declare function queryComment(
+  diff: { el: HTMLElement } | null | undefined,
+  commentId: string,
+): Element | null;
 export declare function createFileView(
   path: string,
   contents: string,
@@ -42,5 +76,8 @@ export declare function createFileTree(opts: {
   dispose: () => void;
 };
 export declare function selectionSide(
-  range: { start: number; end: number; side?: "deletions" | "additions" } | null,
+  range:
+    | { start: number; end: number; side?: "deletions" | "additions" }
+    | { annotationSide: "deletions" | "additions" }
+    | null,
 ): "old" | "new";

@@ -64,14 +64,21 @@ export function fileDiffMetadata(file, hunks) {
   return parsePatchFiles(text)[0]?.files[0] ?? null;
 }
 
-// Per-chapter split diff. `onSelectionChange(range | null)` receives
-// SelectedLineRange ({start, end, side: 'deletions'|'additions'}) from
-// pierre's selection API — gutter-click consumer lives in M2 (composer).
-// Annotation hooks for M2/M5 confirmed: renderAnnotation option and
-// setLineAnnotations() on the returned fileDiff; re-project the full
-// annotation set on any state change (never mutate pierre state).
+// Per-chapter split diff. `onLineNumberClick({lineNumber, annotationSide})`
+// is the gutter-click consumer for the composer (M2); the selection API
+// (`onSelectionChange` with SelectedLineRange) stays wired for M3 re-pin.
+// Annotation hooks: renderAnnotation option + render({lineAnnotations});
+// re-project the full annotation set on any state change (never mutate
+// pierre state) — updateAnnotations re-renders annotation rows only.
 // `file` is {path, status}; app.js passes {path: chapter.file, status: chapter.status}.
-export function createFileDiff(file, hunks, { onSelectionChange } = {}) {
+export function createFileDiff(file, hunks, {
+  onSelectionChange,
+  onLineNumberClick,
+  onGutterUtilityClick,
+  renderGutterUtility,
+  renderAnnotation,
+  annotations = [],
+} = {}) {
   const meta = fileDiffMetadata(file, hunks);
   if (!meta) return null;
   const el = document.createElement("div");
@@ -82,12 +89,87 @@ export function createFileDiff(file, hunks, { onSelectionChange } = {}) {
     disableFileHeader: true,
     enableLineSelection: true,
     onLineSelectionChange: onSelectionChange && ((range) => onSelectionChange(range)),
+    onLineNumberClick: onLineNumberClick && ((props) => onLineNumberClick(props)),
+    onGutterUtilityClick: onGutterUtilityClick && ((range) => onGutterUtilityClick(range)),
+    renderGutterUtility: renderGutterUtility && (() => renderGutterUtility()),
+    renderAnnotation: renderAnnotation && ((annotation) => renderAnnotation(annotation)),
   });
   // containerWrapper (not fileContainer): FileDiff then creates its own
   // <diffs-container> custom element, whose shadow root carries the core
   // component CSS — passing a plain div would render into an unstyled shadow
-  fileDiff.render({ fileDiff: meta, containerWrapper: el });
+  fileDiff.render({ fileDiff: meta, lineAnnotations: annotations, containerWrapper: el });
+  commentStyleSheet(el);
   return { el, fileDiff, dispose: () => fileDiff.cleanUp() };
+}
+
+// Re-render annotation rows only: a fresh array instance marks annotations
+// as changed, so render() skips the full-diff rebuild (diffDidChange false).
+export function updateAnnotations(diff, annotations) {
+  diff.fileDiff.render({ lineAnnotations: annotations });
+}
+
+// sky-eye comments (+ optional open composer) → side-aware
+// DiffLineAnnotations: all comments on one line group into a single
+// annotation row. Pure projection — fixture-tested.
+export function commentAnnotations(comments, composer = null) {
+  const byLine = new Map();
+  const push = (skyEyeSide, line, entry) => {
+    const key = `${skyEyeSide}:${line}`;
+    if (!byLine.has(key))
+      byLine.set(key, {
+        side: skyEyeSide === "old" ? "deletions" : "additions",
+        lineNumber: line,
+        metadata: { comments: [], composer: null },
+      });
+    byLine.get(key).metadata.comments.push(entry);
+  };
+  for (const c of comments) push(c.side, c.line, c);
+  if (composer) push(composer.side, composer.line, { composer: true });
+  return [...byLine.values()];
+}
+
+// Inject app styles for our annotation rows into the shadow root (pierre
+// renders annotations inside its own shadow DOM; document CSS can't reach
+// them, but CSS custom properties from :root do inherit).
+const commentStyle = `
+.sky-comment-row { display: flex; flex-direction: column; gap: 6px;
+  padding: 6px 10px 10px; font: 13px/1.5 var(--font-sans, system-ui);
+  color: var(--fg, #1f2328); background: var(--header-bg, #f6f8fa);
+  border-bottom: 1px solid var(--border, #d0d7de); }
+.sky-comment { border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px; background: var(--bg, #fff); padding: 6px 10px; }
+.sky-comment.resolved { opacity: 0.7; }
+.sky-comment-head { display: flex; gap: 8px; align-items: baseline;
+  font-size: 12px; color: var(--muted, #59636e); margin-bottom: 2px; }
+.sky-comment-head .author { font-weight: 600; color: var(--fg, #1f2328); }
+.sky-comment-text { white-space: pre-wrap; }
+.sky-chip { border-radius: 999px; padding: 0 7px; font-size: 11px;
+  background: var(--add-bg, #dafbe1); }
+.sky-comment-actions { margin-left: auto; display: flex; gap: 8px; }
+.sky-comment-actions button { font-size: 12px; padding: 1px 7px; }
+.sky-comment textarea, .sky-composer textarea { width: 100%;
+  font: 13px/1.5 var(--font-sans, system-ui); padding: 6px;
+  border: 1px solid var(--border, #d0d7de); border-radius: 6px;
+  resize: vertical; }
+.sky-composer { display: flex; flex-direction: column; gap: 6px; }
+.sky-composer-actions { display: flex; gap: 8px; align-items: center; }
+.sky-composer-actions button { font-size: 12px; padding: 2px 10px; }
+.sky-composer-actions .submit { font-weight: 600; }
+.sky-composer-actions select { font-size: 12px; padding: 1px 6px; }
+.sky-flash { animation: sky-flash 1.2s ease-out; }
+@keyframes sky-flash { 0% { background: var(--warning, #ffd452); }
+  100% { background: transparent; } }
+`;
+
+function commentStyleSheet(el) {
+  const root = el.querySelector("diffs-container")?.shadowRoot;
+  if (!root) return;
+  if (!root.adoptedStyleSheets.some((s) => s._skyEye)) {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(commentStyle);
+    sheet._skyEye = true;
+    root.adoptedStyleSheets.push(sheet);
+  }
 }
 
 // Read-only file view for the explorer (replaces the hand-rolled file pane).
@@ -135,7 +217,28 @@ export function createFileTree({ paths, changed = [], onOpen }) {
   return { el, tree, dispose: () => tree.cleanUp() };
 }
 
-// SelectedLineRange → sky-eye anchor side ('old'|'new'), for M2/M3 flows.
-export function selectionSide(range) {
-  return range?.side === "deletions" ? "old" : "new";
+// SelectedLineRange / gutter-click props → sky-eye anchor side ('old'|'new')
+// for M2/M3 flows. `annotationSide` comes from onLineNumberClick; `side` from
+// SelectedLineRange.
+export function selectionSide({ side, annotationSide } = {}) {
+  return (side ?? annotationSide) === "deletions" ? "old" : "new";
+}
+
+// Locate a rendered diff row inside the shadow root for deep links: rows carry
+// data-line (their own side's number) and data-alt-line (the other side's).
+export function queryRow(diff, side, line) {
+  const root = diff?.el.querySelector("diffs-container")?.shadowRoot;
+  if (!root) return null;
+  const column = side === "old" ? "deletions" : "additions";
+  return (
+    root.querySelector(`code[data-${column}] [data-line="${line}"]`) ??
+    root.querySelector(`[data-line="${line}"], [data-alt-line="${line}"]`)
+  );
+}
+
+// Locate our comment row inside the shadow root (data-comment-id set by the
+// renderAnnotation callback in comments.js).
+export function queryComment(diff, commentId) {
+  const root = diff?.el.querySelector("diffs-container")?.shadowRoot;
+  return root?.querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`) ?? null;
 }

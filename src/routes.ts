@@ -5,10 +5,13 @@ import { ApiError, validateRef } from "./cli.ts";
 import { getRefs } from "./refs.ts";
 import { listTree, listTreeRecursive, readFileAt } from "./tree.ts";
 import {
+  createComment,
   createSession,
   listSessions,
   loadSession,
+  patchComment,
   patchSession,
+  sessionId,
 } from "./store.ts";
 
 route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
@@ -61,6 +64,18 @@ route("PATCH", "/api/sessions/:id", ({ root, params, body }) => {
   return patchSession(root, id, body as Record<string, unknown>);
 });
 
+// comments (spec §10, §12): server captures the anchor on create and reanchor
+route("POST", "/api/comments", async ({ root, kind, body }) => {
+  const b = body as Record<string, unknown>;
+  const comment = await createComment(root, kind, sessionId(b.sessionId as string), b);
+  return { status: 201, value: comment };
+});
+
+route("PATCH", "/api/comments/:id", ({ root, kind, params, body }) => {
+  const b = body as Record<string, unknown>;
+  return patchComment(root, kind, sessionId(b.sessionId as string), params.id, b);
+});
+
 // tree/file path containment (spec §11)
 export function validateDir(p: string): string {
   if (p.includes("\0") || p.includes("\\"))
@@ -70,5 +85,3 @@ export function validateDir(p: string): string {
     throw new ApiError(400, `bad path: ${p}`);
   return n;
 }
-
-import { sessionId } from "./store.ts";

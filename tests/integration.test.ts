@@ -43,20 +43,56 @@ async function withServer(
   }
 }
 
+// http.request (not fetch): undici pools keep-alive sockets per origin, and
+// a pooled socket from one server cycle breaks against the next server that
+// reuses the port ("other side closed"). http.request doesn't keep alive.
+const request = (
+  method: string,
+  path: string,
+  body?: unknown,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: any }> =>
+  new Promise((resolve, reject) => {
+    const data = body === undefined ? null : JSON.stringify(body);
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port: portOf,
+        method,
+        path,
+        headers: {
+          ...(data
+            ? {
+                "content-type": "application/json",
+                "content-length": String(Buffer.byteLength(data)),
+              }
+            : {}),
+          ...headers,
+        },
+      },
+      (res) => {
+        let text = "";
+        res.on("data", (c: Buffer) => (text += c));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            body: text ? JSON.parse(text) : null,
+          }),
+        );
+      },
+    );
+    req.on("error", reject);
+    req.end(data);
+  });
+
 const get = async (path: string, expect = 200) => {
-  const res = await fetch(`http://localhost:${portOf}${path}`);
+  const res = await request("GET", path);
   assert.equal(res.status, expect);
-  return { status: res.status, body: res.ok ? await res.json() : null };
+  return res;
 };
 
-const mut = async (method: string, p: string, body: unknown, headers: Record<string, string> = { "x-sky-eye": "1" }) => {
-  const res = await fetch(`http://localhost:${portOf}${p}`, {
-    method,
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-};
+const mut = (method: string, p: string, body: unknown) =>
+  request(method, p, body, { "x-sky-eye": "1" });
 
 let portOf = 0; // set by the test before any request is made
 
@@ -153,6 +189,133 @@ test("integration: refs, tree, file, sessions, security", async () => {
       req.end(JSON.stringify({ base: baseCommit, head }));
     });
     assert.equal(badHost.statusCode, 403);
+  });
+});
+
+test("comments: create, anchor capture, resolve, edit, conflicts (spec §12)", async () => {
+  await withServer(async (port, repo) => {
+    portOf = port;
+    const refs = await get("/api/refs");
+    const head = refs.body.head.id;
+    const session = (
+      await mut("POST", "/api/sessions", { base: refs.body.defaultBase.id, head })
+    ).body;
+    const chapter = session.chapters.find((c: { file: string }) => c.file === "src/a.ts");
+
+    // new-side comment: anchor from the head file ("new one\ntwo\n"),
+    // full 3-line context even at the hunk edge (line 1 → no before)
+    const fresh = (await get(`/api/sessions/${session.id}`)).body;
+    const created = await mut("POST", "/api/comments", {
+      sessionId: session.id,
+      chapterId: chapter.id,
+      file: "src/a.ts",
+      side: "new",
+      line: 1,
+      text: "first!",
+      priority: "nit",
+      lastWriteAt: fresh.lastWriteAt,
+    });
+    assert.equal(created.status, 201);
+    const comment = created.body;
+    assert.equal(comment.text, "first!");
+    assert.equal(comment.createdAt, comment.updatedAt);
+    // identity from the test repo's git config (spec §15)
+    assert.deepEqual(comment.author, { name: "Test", email: "test@example.com" });
+    assert.deepEqual(comment.anchor, {
+      file: "src/a.ts",
+      side: "new",
+      line: 1,
+      text: "new one",
+      before: [],
+      after: ["two"],
+      chapterId: chapter.id,
+    });
+
+    // old-side comment: anchor from the base file ("old one\nold two\n")
+    const base = (await get(`/api/sessions/${session.id}`)).body;
+    const oldComment = (
+      await mut("POST", "/api/comments", {
+        sessionId: session.id,
+        chapterId: chapter.id,
+        file: "src/a.ts",
+        side: "old",
+        line: 2,
+        text: "what was this?",
+        lastWriteAt: base.lastWriteAt,
+      })
+    ).body;
+    assert.equal(oldComment.anchor.text, "old two");
+    assert.deepEqual(oldComment.anchor.before, ["old one"]);
+    assert.deepEqual(oldComment.anchor.after, []);
+    assert.equal(oldComment.priority, undefined);
+
+    // open-comment count in the session list
+    assert.equal((await get("/api/sessions")).body[0].openComments, 2);
+
+    // resolve stamps resolvedAt; reopen clears it
+    const afterCreate = (await get(`/api/sessions/${session.id}`)).body;
+    const resolved = await mut("PATCH", `/api/comments/${comment.id}`, {
+      sessionId: session.id,
+      resolved: true,
+      lastWriteAt: afterCreate.lastWriteAt,
+    });
+    assert.equal(resolved.body.resolved, true);
+    assert.ok(typeof resolved.body.resolvedAt === "number");
+    const reopened = await mut("PATCH", `/api/comments/${comment.id}`, {
+      sessionId: session.id,
+      resolved: false,
+      lastWriteAt: (await get(`/api/sessions/${session.id}`)).body.lastWriteAt,
+    });
+    assert.equal(reopened.body.resolved, false);
+    assert.equal(reopened.body.resolvedAt, undefined);
+    assert.equal((await get("/api/sessions")).body[0].openComments, 2);
+
+    // text edit preserves the anchor and bumps updatedAt
+    const before = (await get(`/api/sessions/${session.id}`)).body;
+    const edited = await mut("PATCH", `/api/comments/${comment.id}`, {
+      sessionId: session.id,
+      text: "first! (edited)",
+      priority: "must-fix",
+      lastWriteAt: before.lastWriteAt,
+    });
+    assert.equal(edited.body.text, "first! (edited)");
+    assert.equal(edited.body.priority, "must-fix");
+    assert.equal(edited.body.updatedAt > edited.body.createdAt, true);
+    assert.deepEqual(edited.body.anchor, comment.anchor);
+
+    // conflicts: stale lastWriteAt → 409
+    const stale = await mut("PATCH", `/api/comments/${comment.id}`, {
+      sessionId: session.id,
+      resolved: true,
+      lastWriteAt: before.lastWriteAt,
+    });
+    assert.equal(stale.status, 409);
+
+    // validation: bad targets and unknown ids
+    const badChapter = await mut("POST", "/api/comments", {
+      sessionId: session.id, chapterId: "nope", file: "src/a.ts", side: "new", line: 1, text: "x",
+    });
+    assert.equal(badChapter.status, 404);
+    const badSide = await mut("POST", "/api/comments", {
+      sessionId: session.id, chapterId: chapter.id, file: "src/a.ts", side: "middle", line: 1, text: "x",
+    });
+    assert.equal(badSide.status, 400);
+    const badLine = await mut("POST", "/api/comments", {
+      sessionId: session.id, chapterId: chapter.id, file: "src/a.ts", side: "new", line: 0, text: "x",
+    });
+    assert.equal(badLine.status, 400);
+    const noText = await mut("POST", "/api/comments", {
+      sessionId: session.id, chapterId: chapter.id, file: "src/a.ts", side: "new", line: 1, text: "  ",
+    });
+    assert.equal(noText.status, 400);
+    const unknownComment = await mut("PATCH", `/api/comments/deadbeef`, {
+      sessionId: session.id, text: "x",
+    });
+    assert.equal(unknownComment.status, 404);
+    const badSession = await mut("POST", "/api/comments", {
+      sessionId: "../../etc/passwd", chapterId: "x", file: "x", side: "new", line: 1, text: "x",
+    });
+    assert.equal(badSession.status, 400);
   });
 });
 

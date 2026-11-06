@@ -150,6 +150,38 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   `renderAnnotation` option + `setLineAnnotations()`, annotations are
   side-aware (`'deletions' | 'additions'`) — old-side comments render fine
   (002 unknown resolved).
+
+## Integration facts (learned at task 002, diffs 1.6.4)
+
+- **Gutter click → composer:** use `onLineNumberClick({ lineNumber,
+  annotationSide })`, not the selection API — selection also fires while
+  dragging to copy text; a gutter number click is the precise "comment here"
+  signal. `selectionSide()` in the adapter accepts both shapes.
+- **Rendering annotations:** pass `renderAnnotation(annotation) →
+  HTMLElement` as a constructor option and the annotation array as
+  `render({ lineAnnotations })`. Updates: call `render({ lineAnnotations })`
+  with a *fresh array instance* — the identity check treats that as changed
+  and re-renders annotation rows without rebuilding the diff.
+- **One annotation per line:** pierre has no per-line stacking guarantee we
+  can rely on; group all comments (plus an open composer) for a line into a
+  single annotation whose metadata is `{ comments: [...], composer: null }`.
+- **Annotation rows live in the shadow root:** document CSS can't reach them.
+  Inject our styles via `shadowRoot.adoptedStyleSheets` (adapter does it once
+  per FileDiff). CSS custom properties from `:root` *do* inherit into the
+  shadow tree, so app-chrome vars still work.
+- **Deep-link targeting:** rendered rows carry `data-line` (own side's line
+  number) and `data-alt-line` (other side's) inside `code[data-deletions]` /
+  `code[data-additions]` blocks; our comment rows carry `data-comment-id`.
+  `queryRow`/`queryComment` in the adapter find them; scroll+flash retries
+  briefly because lazy grammar loading can re-render rows.
+- **Hover copy-link:** `renderGutterUtility(() → HTMLElement)` +
+  `onGutterUtilityClick(range)` — the utility element is slotted (light DOM,
+  document-styled) and shown on gutter hover; the click callback receives a
+  `SelectedLineRange`, so the element itself needs no per-row wiring.
+- **Node-side test gotcha:** undici pools keep-alive sockets per origin; a
+  socket from one `serve()` cycle breaks against the next server reusing the
+  port ("other side closed"). Use `http.request` (no keep-alive) in
+  integration tests when more than one server cycle runs.
 - **Trees:** CSS ships in-bundle (no separate stylesheet export); theming
   via exported `themeToTreeStyles(resolvedTheme)` → CSS var string applied
   to the host element (`--trees-theme-*` chain resolves inside the shadow
