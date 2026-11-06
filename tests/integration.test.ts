@@ -17,6 +17,9 @@ function makeRepo(): string {
   git(repo, "init", "-b", "main");
   git(repo, "config", "user.email", "test@example.com");
   git(repo, "config", "user.name", "Test");
+  // main.ts writes this at startup — without it .sky-watch/ state would leak
+  // into the very diffs the server builds
+  fs.writeFileSync(path.join(repo, ".gitignore"), ".sky-watch/\n");
   fs.writeFileSync(path.join(repo, "base.txt"), "line1\nline2\nline3\n");
   fs.mkdirSync(path.join(repo, "src"));
   fs.writeFileSync(path.join(repo, "src", "a.ts"), "old one\nold two\n");
@@ -328,4 +331,176 @@ test("ignore-file upkeep: gitignore appended, dockerignore untouched", async () 
   assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /\.sky-watch\//);
   assert.ok(!fs.existsSync(path.join(repo, ".dockerignore")));
   fs.rmSync(repo, { recursive: true, force: true });
+});
+
+// ---- refresh flows (spec §13, M3) --------------------------------------
+
+const openSession = async () => {
+  const refs = await get("/api/refs");
+  return (
+    await mut("POST", "/api/sessions", {
+      base: refs.body.defaultBase.id,
+      head: refs.body.head.id,
+      baseLabel: refs.body.defaultBase.label,
+      headLabel: refs.body.head.label ?? undefined,
+    })
+  ).body;
+};
+
+test("refresh: git amend supersedes, comments carried and re-pinned (spec §13.2)", async () => {
+  await withServer(async (port, repo) => {
+    portOf = port;
+    const session = await openSession();
+    assert.equal(
+      (await get(`/api/sessions/${session.id}`)).body.stale,
+      false,
+    );
+    const chapter = session.chapters.find((c: { file: string }) => c.file === "base.txt");
+    const fresh = (await get(`/api/sessions/${session.id}`)).body;
+    const comment = (
+      await mut("POST", "/api/comments", {
+        sessionId: session.id, chapterId: chapter.id, file: "base.txt",
+        side: "new", line: 2, text: "note", lastWriteAt: fresh.lastWriteAt,
+      })
+    ).body;
+    assert.equal(comment.anchor.text, "changed2");
+
+    // amend the feature commit → headRef now resolves to a new commit id
+    fs.writeFileSync(path.join(repo, "base.txt"), "line1\nchanged2\nline3\nline4\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "--amend", "--no-edit");
+
+    const stale = (await get(`/api/sessions/${session.id}`)).body;
+    assert.equal(stale.stale, true);
+
+    const res = await mut("POST", `/api/sessions/${session.id}/refresh`, {});
+    assert.equal(res.status, 200);
+    const successor = res.body.session;
+    assert.ok(res.body.supersededBy);
+    assert.equal(successor.id, res.body.supersededBy);
+    assert.notEqual(successor.id, session.id);
+
+    // old session kept on disk, marked superseded
+    const old = (await get(`/api/sessions/${session.id}`)).body;
+    assert.equal(old.supersededBy, successor.id);
+
+    // comment carried, re-pinned at the same content line with a fresh anchor
+    const carried = successor.comments.find((c: { id: string }) => c.id === comment.id);
+    assert.ok(carried, "comment carried into successor");
+    assert.equal(carried.orphaned, undefined);
+    assert.equal(carried.line, 2);
+    assert.equal(carried.anchor.text, "changed2");
+    assert.equal(carried.anchor.chapterId, carried.chapterId);
+    // the fresh anchor reflects the amended file (3 lines of after-context now)
+    assert.deepEqual(carried.anchor.after, ["line3", "line4"]);
+  });
+});
+
+test("refresh: unmatched comments orphan into triage (spec §13.3–13.4)", async () => {
+  await withServer(async (port, repo) => {
+    portOf = port;
+    const session = await openSession();
+    const chapter = session.chapters.find((c: { file: string }) => c.file === "base.txt");
+    const fresh = (await get(`/api/sessions/${session.id}`)).body;
+    const comment = (
+      await mut("POST", "/api/comments", {
+        sessionId: session.id, chapterId: chapter.id, file: "base.txt",
+        side: "new", line: 2, text: "note", lastWriteAt: fresh.lastWriteAt,
+      })
+    ).body;
+
+    // rewrite the commented line away → no anchor match in the new head
+    fs.writeFileSync(path.join(repo, "base.txt"), "line1\nchanged-two\nline3\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "--amend", "--no-edit");
+
+    const res = await mut("POST", `/api/sessions/${session.id}/refresh`, {});
+    const carried = res.body.session.comments.find((c: { id: string }) => c.id === comment.id);
+    assert.equal(carried.orphaned, true);
+    assert.equal(carried.anchor.text, "changed2"); // old anchor kept
+    // re-pinning clears the orphan (server-side anchor capture, spec §12);
+    // targets a live chapter of that file (old chapter ids may survive when
+    // the hunk range is unchanged — D§11 — so use the successor's chapter)
+    const afterRefresh = (await get(`/api/sessions/${res.body.session.id}`)).body;
+    const fixed = await mut("PATCH", `/api/comments/${comment.id}`, {
+      sessionId: res.body.session.id,
+      reanchor: {
+        chapterId: res.body.session.chapters.find((c: { file: string }) => c.file === "base.txt").id,
+        file: "base.txt", side: "new", line: 2,
+      },
+      lastWriteAt: afterRefresh.lastWriteAt,
+    });
+    assert.equal(fixed.status, 200);
+    assert.equal(fixed.body.orphaned, undefined);
+    assert.equal(fixed.body.anchor.text, "changed-two");
+  });
+});
+
+// ---- jj flow: the change-id session key survives a working-copy change ----
+
+function makeJjRepo(): string {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "sky-eye-jj-"));
+  const jj = (...args: string[]) =>
+    execFileSync("jj", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  jj("git", "init");
+  // main.ts writes this at startup — without it .sky-watch/ state would leak
+  // into the very diffs the server builds
+  fs.writeFileSync(path.join(repo, ".gitignore"), ".sky-watch/\n");
+  jj("config", "set", "--repo", "user.name", "Test");
+  jj("config", "set", "--repo", "user.email", "test@example.com");
+  fs.writeFileSync(path.join(repo, "f.txt"), "one\ntwo\nthree\n");
+  jj("describe", "-m", "base commit");
+  jj("new");
+  fs.writeFileSync(path.join(repo, "f.txt"), "one\n2wo\nthree\n");
+  jj("describe", "-m", "head commit");
+  return repo;
+}
+
+test("refresh: jj change-id key survives, session updates in place (spec §13.2)", async () => {
+  const repo = makeJjRepo();
+  const { server, port } = await serve(repo, "jj");
+  try {
+    portOf = port;
+    const refs = await get("/api/refs");
+    assert.equal(refs.body.kind, "jj");
+    // head is the change id of @ (mutable → not a commit id, spec §9.1)
+    assert.doesNotMatch(refs.body.head.id, /^[0-9a-f]{40}$/);
+    const session = (
+      await mut("POST", "/api/sessions", { base: refs.body.defaultBase.id, head: refs.body.head.id })
+    ).body;
+    const chapter = session.chapters.find((c: { file: string }) => c.file === "f.txt");
+    const fresh = (await get(`/api/sessions/${session.id}`)).body;
+    const comment = (
+      await mut("POST", "/api/comments", {
+        sessionId: session.id, chapterId: chapter.id, file: "f.txt",
+        side: "new", line: 2, text: "note", lastWriteAt: fresh.lastWriteAt,
+      })
+    ).body;
+    assert.equal(comment.anchor.text, "2wo");
+
+    // working-copy edit: same change id → same session key, changed diff
+    fs.writeFileSync(path.join(repo, "f.txt"), "one\n2wo\nthree\nfour\n");
+    const stale = (await get(`/api/sessions/${session.id}`)).body;
+    assert.equal(stale.stale, true);
+
+    const res = await mut("POST", `/api/sessions/${session.id}/refresh`, {});
+    assert.equal(res.status, 200);
+    assert.equal(res.body.supersededBy, undefined);
+    assert.equal(res.body.session.id, session.id); // in place
+    assert.notEqual(res.body.session.diffDigest, session.diffDigest);
+
+    // comment re-pinned on the rebuilt chapters, same line
+    const carried = res.body.session.comments.find((c: { id: string }) => c.id === comment.id);
+    assert.equal(carried.orphaned, undefined);
+    assert.equal(carried.line, 2);
+    assert.equal(carried.anchor.text, "2wo");
+    assert.equal(carried.anchor.chapterId, carried.chapterId);
+
+    // digest updated → no longer stale
+    const after = (await get(`/api/sessions/${session.id}`)).body;
+    assert.equal(after.stale, false);
+  } finally {
+    server.close();
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });

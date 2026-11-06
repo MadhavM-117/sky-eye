@@ -9,6 +9,8 @@ import { chunk, loadConfig } from "./chunker.ts";
 import { resolveStableId } from "./refs.ts";
 import { getIdentity } from "./identity.ts";
 import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
+// re-exported for remap.ts (refresh flows persist through the same path)
+export { writeSession as persistSession };
 import { readFileAt } from "./tree.ts";
 import type { Anchor, Comment, Hunk, Session } from "./types.ts";
 
@@ -38,7 +40,7 @@ export function loadSession(root: string, id: string): Session {
   return s;
 }
 
-function writeSession(root: string, session: Session): Session {
+export function writeSession(root: string, session: Session): Session {
   fs.mkdirSync(dir(root), { recursive: true });
   const now = Date.now();
   session.updatedAt = now;

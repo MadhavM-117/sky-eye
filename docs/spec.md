@@ -635,12 +635,10 @@ editable, re-run asks before overwriting edits.
 Genuine gaps the docs don't settle — decide or verify when the relevant
 milestone starts:
 
-1. **jj hunk headers lack funcname context** (probably). The chunker's
-   function-boundary rule depends on `@@ ... @@ <funcname>`, which git
-   provides and jj's `--git` output may not. Verify at M4; fallback is the
-   blank-line/indentation heuristic (§8.2), but confirm it's good enough in
-   jj mode — jj is this repo's own VCS, so it's the primary path, not the
-   edge case.
+1. **jj hunk headers lack funcname context** — RESOLVED (verified at M3 on
+   jj 0.46): `jj diff --git` emits `@@ ... @@ <funcname>` just like git
+   (e.g. `@@ -1,9 +1,10 @@ fn a() {`), so the chunker's function-boundary
+   rule (§8.2) works in jj mode with no fallback needed.
 2. **LLM protocol confirmation.** OpenAI-compatible chat completions is
    assumed (fits `baseUrl`/`model`/`apiKey`). Confirm which providers the
    user actually wants; Anthropic-native APIs differ enough to matter.

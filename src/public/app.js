@@ -174,6 +174,7 @@ function renderSession(session, route = null) {
       <label class="reviewed-toggle"><input type="checkbox" id="reviewed" ${session.reviewed ? "checked" : ""}/> reviewed</label>
       <a class="explorer-link" href="#${esc(session.id)}/explorer//head">files</a>
     </header>
+    ${bannersHtml(session)}
     <div class="chapters">${chaptersHtml}</div>`);
 
   wireSession(session, route);
@@ -194,6 +195,31 @@ const handleMutError = (e) => {
 
 const badge = (session) =>
   session.meta.repo.split("/").slice(-1)[0] + " review";
+
+// stale / superseded / orphan-triage banners (spec §13, U§3.1)
+function bannersHtml(session) {
+  const orphans = session.comments.filter((c) => c.orphaned && !c.resolved);
+  const out = [];
+  if (session.supersededBy)
+    out.push(
+      `<div class="banner">this review was superseded — <a href="#${esc(session.supersededBy)}">open the successor</a></div>`,
+    );
+  else if (session.stale)
+    out.push(
+      `<div class="banner">review is stale — the underlying diff changed <button id="refresh">refresh review</button></div>`,
+    );
+  if (orphans.length)
+    out.push(`<div class="banner triage" id="triage"></div>`);
+  return out.join("");
+}
+
+const triageItem = (c) => `
+  <div class="triage-item" data-comment="${esc(c.id)}">
+    <span class="triage-text">“${esc(c.text)}”</span>
+    <span class="meta">was ${esc(c.file)}:${c.line}</span>
+    <button class="triage-repin" data-comment="${esc(c.id)}">re-pin</button>
+    <button class="triage-resolve" data-comment="${esc(c.id)}">resolve</button>
+  </div>`;
 
 function chapterHtml(session, c, index) {
   const encFile = encodeURIComponent(c.file);
@@ -224,6 +250,9 @@ function wireSession(session, route = null) {
   let current = session;
   // one composer at a time (design A); diffs holds pierre instances per chapter
   const composer = { state: null };
+  // pending orphan-triage re-pin (spec §13.4): next gutter click on that
+  // file's diff re-pins instead of opening the composer
+  let triage = null;
   const diffs = new Map();
 
   const refetch = async () => {
@@ -232,6 +261,7 @@ function wireSession(session, route = null) {
     if (el)
       el.textContent = `${current.comments.filter((c) => !c.resolved).length} open comments`;
     refreshAll();
+    renderTriage();
     return current;
   };
   const refreshAll = () => {
@@ -317,9 +347,19 @@ function wireSession(session, route = null) {
       chapter.hunks,
       {
         annotations: annotationsFor(chapter),
-        // gutter click → composer at that line (toggle on same line)
+        // gutter click → composer at that line (toggle on same line);
+        // while a triage re-pin is pending, the click re-pins instead
         onLineNumberClick: ({ lineNumber, annotationSide }) => {
           const side = selectionSide({ annotationSide });
+          if (triage && triage.file === chapter.file) {
+            const comment = triage;
+            triage = null;
+            renderTriage();
+            patchComment(comment, {
+              reanchor: { chapterId: chapter.id, file: chapter.file, side, line: lineNumber },
+            });
+            return;
+          }
           const same =
             composer.state?.chapterId === chapter.id &&
             composer.state.side === side &&
@@ -389,6 +429,56 @@ function wireSession(session, route = null) {
       diffs.get(chapter?.id)?.el.scrollIntoView({ block: "start" });
     }
   }
+
+  // orphan triage (spec §13.4): re-pin by clicking a line in the file's new
+  // diff — the pending click is captured in onLineNumberClick above
+  const renderTriage = () => {
+    const el = document.getElementById("triage");
+    if (!el) return;
+    const orphans = current.comments.filter((c) => c.orphaned && !c.resolved);
+    if (orphans.length === 0) {
+      el.remove();
+      return;
+    }
+    el.innerHTML = triage
+      ? `click a line in the <strong>${esc(triage.file)}</strong> diff to re-pin “${esc(triage.text)}” <button id="triage-cancel">cancel</button>`
+      : `${orphans.length} comment${orphans.length === 1 ? "" : "s"} need re-pinning${orphans.map(triageItem).join("")}`;
+    el.querySelectorAll(".triage-repin").forEach((b) => {
+      b.onclick = () => {
+        triage = current.comments.find((c) => c.id === b.dataset.comment);
+        renderTriage();
+        const chapter = current.chapters.find((c) => c.file === triage.file);
+        diffs.get(chapter?.id)?.el.scrollIntoView({ block: "center" });
+      };
+    });
+    el.querySelectorAll(".triage-resolve").forEach((b) => {
+      b.onclick = () =>
+        patchComment(
+          current.comments.find((c) => c.id === b.dataset.comment),
+          { resolved: true },
+        );
+    });
+    const cancel = el.querySelector("#triage-cancel");
+    if (cancel)
+      cancel.onclick = () => {
+        triage = null;
+        renderTriage();
+      };
+  };
+  renderTriage();
+
+  // refresh (spec §13.2): in place for jj; git lands on a successor session
+  const refreshBtn = document.getElementById("refresh");
+  if (refreshBtn)
+    refreshBtn.onclick = async () => {
+      try {
+        const res = await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/refresh`, {});
+        if (res.supersededBy) location.hash = `#${res.supersededBy}`;
+        else renderSession(res.session);
+      } catch (e) {
+        alert(e?.error ?? "could not refresh");
+      }
+    };
 
   document.querySelectorAll(".collapse").forEach((btn) => {
     btn.onclick = () => btn.closest(".chapter").classList.toggle("collapsed");

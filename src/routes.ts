@@ -13,6 +13,7 @@ import {
   patchSession,
   sessionId,
 } from "./store.ts";
+import { checkStale, refreshSession } from "./remap.ts";
 
 route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
 
@@ -34,9 +35,10 @@ route("GET", "/api/file", async ({ root, kind, url }) => {
 
 route("GET", "/api/sessions", ({ root }) => listSessions(root));
 
-route("GET", "/api/sessions/:id", ({ root, params }) => {
-  const id = sessionId(params.id);
-  return loadSession(root, id);
+route("GET", "/api/sessions/:id", async ({ root, kind, params }) => {
+  const session = loadSession(root, sessionId(params.id));
+  // computed on read, never auto-refreshed (spec §13.1)
+  return { ...session, stale: await checkStale(root, kind, session) };
 });
 
 route("POST", "/api/sessions", async ({ root, kind, body }) => {
@@ -58,6 +60,11 @@ route("POST", "/api/sessions", async ({ root, kind, body }) => {
   );
   return { status: created ? 201 : 200, value: session };
 });
+
+// refresh (spec §13.2): in place for jj, successor session for git
+route("POST", "/api/sessions/:id/refresh", async ({ root, kind, params }) =>
+  refreshSession(root, kind, loadSession(root, sessionId(params.id))),
+);
 
 route("PATCH", "/api/sessions/:id", ({ root, params, body }) => {
   const id = sessionId(params.id);

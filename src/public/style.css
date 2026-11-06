@@ -121,6 +121,17 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 }
 .banner.error { background: var(--error-bg); }
 
+/* orphan triage (M3): list of comments needing re-pinning */
+.triage-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 0; border-top: 1px solid var(--border);
+}
+.triage-item:first-of-type { border-top: none; margin-top: 4px; }
+.triage-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+.triage-item .meta { color: var(--muted); font-size: 12px; flex: 1; }
+.triage-item button { font-size: 12px; padding: 2px 10px; }
+.banner button { font-size: 12px; padding: 2px 10px; margin-left: 8px; }
+
 /* explorer: tree panel + file pane (tree/file internals are pierre) */
 .explorer { display: grid; grid-template-columns: 280px 1fr; gap: 12px; align-items: start; }
 .pierre-tree { height: 70vh; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; }
