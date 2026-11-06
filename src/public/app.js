@@ -327,6 +327,17 @@ function wireSession(session, route = null) {
           composer.state = same ? null : { chapterId: chapter.id, side, line: lineNumber };
           refreshAll();
         },
+        // gutter drag across lines never fires a click — comment on the
+        // selection's start line (v1 anchors a single line, design A)
+        onSelectionEnd: (range) => {
+          if (!range || range.end <= range.start) return; // click handled above
+          composer.state = {
+            chapterId: chapter.id,
+            side: selectionSide(range),
+            line: range.start,
+          };
+          refreshAll();
+        },
         renderAnnotation: (annotation) => annotationRow(annotation, chapter),
         // hover + button in the gutter (U§3.2 copy-link); the callback gets
         // the line range — single click = one line

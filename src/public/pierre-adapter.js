@@ -73,6 +73,7 @@ export function fileDiffMetadata(file, hunks) {
 // `file` is {path, status}; app.js passes {path: chapter.file, status: chapter.status}.
 export function createFileDiff(file, hunks, {
   onSelectionChange,
+  onSelectionEnd,
   onLineNumberClick,
   onGutterUtilityClick,
   renderAnnotation,
@@ -88,6 +89,10 @@ export function createFileDiff(file, hunks, {
     disableFileHeader: true,
     enableLineSelection: true,
     onLineSelectionChange: onSelectionChange && ((range) => onSelectionChange(range)),
+    // fires once on release with the completed range — the only event a
+    // gutter drag produces (a drag across lines never fires a click, so
+    // onLineNumberClick alone misses multi-line selections)
+    onLineSelectionEnd: onSelectionEnd && ((range) => onSelectionEnd(range)),
     onLineNumberClick: onLineNumberClick && ((props) => onLineNumberClick(props)),
     // gutter utility (hover "#" affordance): pierre rejects combining
     // onGutterUtilityClick with renderGutterUtility — the default + button

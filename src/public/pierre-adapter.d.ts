@@ -28,6 +28,7 @@ export declare function createFileDiff(
   hunks: Chapter["hunks"],
   opts?: {
     onSelectionChange?: (range: unknown) => void;
+    onSelectionEnd?: (range: { start: number; end: number; side?: string } | null) => void;
     onLineNumberClick?: (props: { lineNumber: number; annotationSide: string }) => void;
     onGutterUtilityClick?: (range: { start: number; side?: string }) => void;
     renderAnnotation?: (annotation: unknown) => HTMLElement;
