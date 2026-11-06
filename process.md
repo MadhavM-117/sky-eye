@@ -52,3 +52,5 @@ fork knowledge into conversations. This file only governs *how* we work.
 - `process.md` — this file
 - `.implementation/tasks/` — numbered task files (3-digit prefix)
 - `.implementation/plans/` — per-task plans, named `<task#>-<slug>.md`
+- `.implementation/docs/` — working guides for cross-task concerns
+  (external packages: `pierre-packages.md`), extended as tasks learn

@@ -10,3 +10,7 @@ editable, re-run asks before overwriting edits.
 
 Spec: §16. Open questions to settle at task start: LLM protocol/provider
 confirmation (§22.2), blocking vs streaming.
+
+Pierre notes (after 008): none — narratives render in sky-eye's own editable
+text field above the `FileDiff` block; the LLM layer never touches pierre
+objects. Marks from the shared classify call ride the 005 annotation path.

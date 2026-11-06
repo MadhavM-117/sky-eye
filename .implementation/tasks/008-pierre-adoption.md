@@ -2,7 +2,9 @@
 
 **Goal:** replace the hand-rolled diff renderer, highlighter, and explorer
 tree with the `@pierre/*` packages, per the revised dependency policy
-(spec §2, design §2).
+(spec §2, design §2). Working guidance lives in
+`.implementation/docs/pierre-packages.md` — read it first; extend it with
+everything this task learns (it ends with a known-unknowns list to resolve).
 
 Prereq: M1 spine (001) exists with hand-rolled `diffview.js`,
 `highlight.js`, `explorer.js`; parent commit already hand-ported pierre
