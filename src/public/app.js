@@ -328,14 +328,8 @@ function wireSession(session, route = null) {
           refreshAll();
         },
         renderAnnotation: (annotation) => annotationRow(annotation, chapter),
-        // hover copy-link in the gutter (U§3.2); click callback gets the range
-        renderGutterUtility: () => {
-          const b = document.createElement("button");
-          b.className = "sky-copy-link";
-          b.textContent = "#";
-          b.title = "copy deep link to this line";
-          return b;
-        },
+        // hover + button in the gutter (U§3.2 copy-link); the callback gets
+        // the line range — single click = one line
         onGutterUtilityClick: (range) =>
           copyLink(
             `#${current.id}/${chapter.id}/${encodeURIComponent(chapter.file)}/${range.start}`,

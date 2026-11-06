@@ -30,7 +30,6 @@ export declare function createFileDiff(
     onSelectionChange?: (range: unknown) => void;
     onLineNumberClick?: (props: { lineNumber: number; annotationSide: string }) => void;
     onGutterUtilityClick?: (range: { start: number; side?: string }) => void;
-    renderGutterUtility?: () => HTMLElement;
     renderAnnotation?: (annotation: unknown) => HTMLElement;
     annotations?: unknown[];
   },

@@ -174,10 +174,13 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   `code[data-additions]` blocks; our comment rows carry `data-comment-id`.
   `queryRow`/`queryComment` in the adapter find them; scroll+flash retries
   briefly because lazy grammar loading can re-render rows.
-- **Hover copy-link:** `renderGutterUtility(() → HTMLElement)` +
-  `onGutterUtilityClick(range)` — the utility element is slotted (light DOM,
-  document-styled) and shown on gutter hover; the click callback receives a
-  `SelectedLineRange`, so the element itself needs no per-row wiring.
+- **Hover copy-link (gutter utility):** the two APIs are mutually exclusive
+  (pierre throws) — use `enableGutterUtility: true` + `onGutterUtilityClick(range)`
+  and pierre's own default `+` button (shown on gutter hover). The callback
+  receives a `SelectedLineRange`: plain click = single line, click-drag =
+  range (that gesture also replaces plain gutter selection while enabled).
+  `renderGutterUtility` (custom slotted element) would mean building our own
+  button with no way to get the hovered line from it — don't.
 - **Node-side test gotcha:** undici pools keep-alive sockets per origin; a
   socket from one `serve()` cycle breaks against the next server reusing the
   port ("other side closed"). Use `http.request` (no keep-alive) in

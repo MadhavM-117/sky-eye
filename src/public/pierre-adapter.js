@@ -75,7 +75,6 @@ export function createFileDiff(file, hunks, {
   onSelectionChange,
   onLineNumberClick,
   onGutterUtilityClick,
-  renderGutterUtility,
   renderAnnotation,
   annotations = [],
 } = {}) {
@@ -90,8 +89,12 @@ export function createFileDiff(file, hunks, {
     enableLineSelection: true,
     onLineSelectionChange: onSelectionChange && ((range) => onSelectionChange(range)),
     onLineNumberClick: onLineNumberClick && ((props) => onLineNumberClick(props)),
+    // gutter utility (hover "#" affordance): pierre rejects combining
+    // onGutterUtilityClick with renderGutterUtility — the default + button
+    // plus the click callback (single line, or click-drag for a range) is
+    // the intended pairing; enableGutterUtility must be explicit here
+    enableGutterUtility: !!onGutterUtilityClick,
     onGutterUtilityClick: onGutterUtilityClick && ((range) => onGutterUtilityClick(range)),
-    renderGutterUtility: renderGutterUtility && (() => renderGutterUtility()),
     renderAnnotation: renderAnnotation && ((annotation) => renderAnnotation(annotation)),
   });
   // containerWrapper (not fileContainer): FileDiff then creates its own
