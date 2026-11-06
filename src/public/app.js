@@ -351,7 +351,12 @@ function wireSession(session, route = null) {
         const target = find();
         if (target) {
           target.scrollIntoView({ block: "center" });
-          target.classList.add("sky-flash");
+          // Web Animations instead of a CSS class: pierre's diff rows live in
+          // its shadow root, where our stylesheet doesn't reach
+          target.animate?.(
+            [{ backgroundColor: "var(--warning, #ffd452)" }, { backgroundColor: "transparent" }],
+            { duration: 1200, easing: "ease-out" },
+          );
           return;
         }
         if (++tries < 20) setTimeout(tick, 100);

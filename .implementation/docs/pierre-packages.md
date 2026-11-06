@@ -165,10 +165,13 @@ on an upgrade and the single place version-diff reviews. Corollaries:
 - **One annotation per line:** pierre has no per-line stacking guarantee we
   can rely on; group all comments (plus an open composer) for a line into a
   single annotation whose metadata is `{ comments: [...], composer: null }`.
-- **Annotation rows live in the shadow root:** document CSS can't reach them.
-  Inject our styles via `shadowRoot.adoptedStyleSheets` (adapter does it once
-  per FileDiff). CSS custom properties from `:root` *do* inherit into the
-  shadow tree, so app-chrome vars still work.
+- **Annotation rows live in the LIGHT DOM:** `FileDiff.renderAnnotations`
+  appends our `renderAnnotation` output as children of the `<diffs-container>`
+  element and slots them into named `<slot>`s inside its shadow root. So:
+  style them from the document stylesheet (style.css) — shadow-root
+  `adoptedStyleSheets` do NOT reach them — and find them with a plain
+  `container.querySelector` (adapter `queryComment`). The diff rows
+  themselves (with `data-line`/`data-alt-line`) ARE inside the shadow root.
 - **Deep-link targeting:** rendered rows carry `data-line` (own side's line
   number) and `data-alt-line` (other side's) inside `code[data-deletions]` /
   `code[data-additions]` blocks; our comment rows carry `data-comment-id`.

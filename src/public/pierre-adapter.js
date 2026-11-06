@@ -101,7 +101,6 @@ export function createFileDiff(file, hunks, {
   // <diffs-container> custom element, whose shadow root carries the core
   // component CSS — passing a plain div would render into an unstyled shadow
   fileDiff.render({ fileDiff: meta, lineAnnotations: annotations, containerWrapper: el });
-  commentStyleSheet(el);
   return { el, fileDiff, dispose: () => fileDiff.cleanUp() };
 }
 
@@ -131,49 +130,9 @@ export function commentAnnotations(comments, composer = null) {
   return [...byLine.values()];
 }
 
-// Inject app styles for our annotation rows into the shadow root (pierre
-// renders annotations inside its own shadow DOM; document CSS can't reach
-// them, but CSS custom properties from :root do inherit).
-const commentStyle = `
-.sky-comment-row { display: flex; flex-direction: column; gap: 6px;
-  padding: 6px 10px 10px; font: 13px/1.5 var(--font-sans, system-ui);
-  color: var(--fg, #1f2328); background: var(--header-bg, #f6f8fa);
-  border-bottom: 1px solid var(--border, #d0d7de); }
-.sky-comment { border: 1px solid var(--border, #d0d7de);
-  border-radius: 6px; background: var(--bg, #fff); padding: 6px 10px; }
-.sky-comment.resolved { opacity: 0.7; }
-.sky-comment-head { display: flex; gap: 8px; align-items: baseline;
-  font-size: 12px; color: var(--muted, #59636e); margin-bottom: 2px; }
-.sky-comment-head .author { font-weight: 600; color: var(--fg, #1f2328); }
-.sky-comment-text { white-space: pre-wrap; }
-.sky-chip { border-radius: 999px; padding: 0 7px; font-size: 11px;
-  background: var(--add-bg, #dafbe1); }
-.sky-comment-actions { margin-left: auto; display: flex; gap: 8px; }
-.sky-comment-actions button { font-size: 12px; padding: 1px 7px; }
-.sky-comment textarea, .sky-composer textarea { width: 100%;
-  font: 13px/1.5 var(--font-sans, system-ui); padding: 6px;
-  border: 1px solid var(--border, #d0d7de); border-radius: 6px;
-  resize: vertical; }
-.sky-composer { display: flex; flex-direction: column; gap: 6px; }
-.sky-composer-actions { display: flex; gap: 8px; align-items: center; }
-.sky-composer-actions button { font-size: 12px; padding: 2px 10px; }
-.sky-composer-actions .submit { font-weight: 600; }
-.sky-composer-actions select { font-size: 12px; padding: 1px 6px; }
-.sky-flash { animation: sky-flash 1.2s ease-out; }
-@keyframes sky-flash { 0% { background: var(--warning, #ffd452); }
-  100% { background: transparent; } }
-`;
-
-function commentStyleSheet(el) {
-  const root = el.querySelector("diffs-container")?.shadowRoot;
-  if (!root) return;
-  if (!root.adoptedStyleSheets.some((s) => s._skyEye)) {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(commentStyle);
-    sheet._skyEye = true;
-    root.adoptedStyleSheets.push(sheet);
-  }
-}
+// (Comment-row styling lives in style.css: pierre appends annotation rows
+// to the diffs-container's LIGHT DOM and slots them into its shadow root,
+// so document styles apply — see queryComment below.)
 
 // Read-only file view for the explorer (replaces the hand-rolled file pane).
 export function createFileView(path, contents) {
@@ -239,9 +198,11 @@ export function queryRow(diff, side, line) {
   );
 }
 
-// Locate our comment row inside the shadow root (data-comment-id set by the
-// renderAnnotation callback in comments.js).
+// Locate our comment row for deep links. Annotation rows are LIGHT-DOM
+// children of the diffs-container (FileDiff.renderAnnotations appends them
+// to fileContainer, then slots them into its shadow root) — so they are
+// styled by the document stylesheet and found by a plain querySelector.
 export function queryComment(diff, commentId) {
-  const root = diff?.el.querySelector("diffs-container")?.shadowRoot;
-  return root?.querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`) ?? null;
+  const container = diff?.el.querySelector("diffs-container");
+  return container?.querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`) ?? null;
 }
