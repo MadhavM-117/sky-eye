@@ -247,11 +247,14 @@ How a chapter summary is produced:
 - **Output**: a short paragraph — what is happening here, not a judgment.
 - **Caching**: written to `Chapter.narrative` on first generation; survives
   reloads and exports. Re-run via `POST /api/sessions/:id/rerun`.
-- **Human editing (the rule, not the exception)**: the narrative is a plain
-  editable text field. Saving writes `narrative` and sets
+- **Human editing (the rule, not the exception)**: the narrative renders as
+  markdown by default (escape-first, XSS-safe); an edit button swaps in a
+  textarea prefilled with the current markdown text. Saving writes
+  `narrative` (markdown text verbatim) and sets
   `narrativeEdited: true`. A re-run on an edited chapter asks for
-  confirmation before overwriting. No LLM needed to edit — the field is
-  writable over "unanalyzed" too.
+  confirmation before overwriting; while generation runs, the edit button
+  is hidden behind the loading indicator. No LLM needed to edit — the
+  editor opens over "unanalyzed" too.
 - **Per-task model/key config**: a config file at `.sky-watch/config.json`
   (inside the ignored state folder, so keys never land in git/jj/docker).
   Tasks (v1: `narrate`, `classify`; the custom classifier command (spec

@@ -119,10 +119,14 @@ read top to bottom; collapsing is an optimization, not the default).
 
 - Collapsed chapter: title, one-line narrative placeholder ("unanalyzed"
   until narratives exist).
-- Expanded chapter: the narrative paragraph sits above the diff as a plain
-  editable text field — the LLM generates a draft on first expansion, the
-  user can rewrite or write it from scratch at any time. A re-run that would
-  overwrite a human-edited narrative asks first.
+- Expanded chapter: the narrative paragraph sits above the diff as rendered
+  markdown (a muted "not analyzed yet" placeholder until then). While the
+  LLM generates the draft on first expansion, a spinner + "analyzing…"
+  replaces the view and the edit button is hidden. An ✎ edit button swaps
+  the view for a textarea (save/cancel) prefilled with the current markdown
+  text — minor edits are the common case, so editing starts from what's
+  there, not a blank field; markdown is stored verbatim. A re-run that
+  would overwrite a human-edited narrative asks first.
 - Below it: per-file diff blocks in path order — a chapter may span several
   files, each block with its own file path heading; GitHub-style two-column
   diff (old left, new right), hunks with context lines. Code is syntax-highlighted by the pierre

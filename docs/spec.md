@@ -575,7 +575,11 @@ Three views, hash-routed (`#` empty → first screen):
 2. **Session view:** header (editable label, aliases, open-comment count,
    reviewed toggle, actions: refresh / re-run / export, stale banner, orphan
    banner) → chapters as accordion, **expanded by default**; narrative as a
-   plain editable text field above the diff (save → `narrativeEdited`); per-
+   rendered markdown view above the diff (stored as markdown text verbatim,
+   HTML-escaped before rendering — never raw HTML), editable only via an
+   edit button that swaps in a textarea prefilled with the current markdown
+   (save → `narrativeEdited`); while the LLM analysis runs, a loading
+   indicator replaces the view and the edit button is hidden; per-
    file headings; per chapter, a `@pierre/diffs` `FileDiff` (split style, one
    file) renders the two-column diff with hunks + context. Comments attach
    through FileDiff's **line-annotation framework** (annotation rows under

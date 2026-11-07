@@ -12,6 +12,7 @@ import {
   updateAnnotations,
 } from "./pierre-adapter.js";
 import { commentNode, composerNode } from "./comments.js";
+import { mdToHtml } from "./markdown.js";
 
 // highlighter must be loaded before FileDiff renders anything; await it
 // (best-effort: if it fails, diffs falls back to unhighlighted text)
@@ -263,14 +264,30 @@ function chapterHtml(session, c, index) {
       <button class="collapse" data-i="${index}">▾</button>
       <span class="chapter-title">chapter ${index + 1}</span>
       <span class="stats">${del || !add ? `<span class="del">−${del}</span> ` : ``}<span class="add">+${add}</span></span>
+      <button class="narr-edit" data-i="${index}" title="edit narrative">✎ edit</button>
       <button class="rerun" data-i="${index}" title="re-generate narrative + marks">↻</button>
     </h2>
     <div class="chapter-body">
-      <textarea class="narrative" data-chapter="${c.id}" rows="2"
-        placeholder="what's happening in this chapter…">${esc(c.narrative)}</textarea>
+      <div class="narrative-box" data-chapter="${c.id}">
+        <div class="narrative-view">${narrativeViewHtml(c)}</div>
+        <textarea class="narrative" hidden rows="4"></textarea>
+        <div class="narrative-load" hidden><span class="spinner"></span> analyzing…</div>
+        <div class="narrative-actions" hidden>
+          <button class="narr-save">save</button>
+          <button class="narr-cancel">cancel</button>
+        </div>
+      </div>
       ${blocks}
     </div>
   </section>`;
+}
+
+// narrative as read view: rendered markdown; "unanalyzed"/empty shows a
+// placeholder instead (markdown stored verbatim in the session, §18)
+function narrativeViewHtml(c) {
+  if (!c.narrative || c.narrative === "unanalyzed")
+    return `<span class="placeholder">not analyzed yet — the AI summary appears here</span>`;
+  return mdToHtml(c.narrative);
 }
 
 function wireSession(session, route = null) {
@@ -458,14 +475,28 @@ function wireSession(session, route = null) {
   // (chapters render expanded, so "first expansion" is here). Sequential:
   // each response refreshes `current`, keeping lastWriteAt fresh for any
   // concurrent narrative edit PATCH. 409 needsConfirm (edited narrative)
-  // asks before overwriting (§10).
+  // asks before overwriting (§10). While a rerun runs, the chapter shows a
+  // loading indicator and its edit button is hidden (§18).
   const narrating = new Set();
+  const narrBox = (chapterId) =>
+    document.querySelector(`.narrative-box[data-chapter="${chapterId}"]`);
+  const setNarrating = (chapterId, on) => {
+    const box = narrBox(chapterId);
+    if (!box) return;
+    box.classList.toggle("narrating", on);
+    box.querySelector(".narrative-load").hidden = !on;
+    const editBtn = box.closest(".chapter").querySelector(".narr-edit");
+    if (editBtn) editBtn.hidden = on;
+  };
+  const setNarrView = (chapter) => {
+    const box = narrBox(chapter.id);
+    if (box) box.querySelector(".narrative-view").innerHTML = narrativeViewHtml(chapter);
+  };
   const rerunChapterUi = async (chapterId, confirmed = false) => {
     const chapter = current.chapters.find((c) => c.id === chapterId);
     if (!chapter || narrating.has(chapterId)) return;
     narrating.add(chapterId);
-    const ta = document.querySelector(`textarea.narrative[data-chapter="${chapterId}"]`);
-    ta?.classList.add("narrating");
+    setNarrating(chapterId, true);
     try {
       current = await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/rerun`, {
         chapterId,
@@ -473,12 +504,12 @@ function wireSession(session, route = null) {
       });
       const updated = current.chapters.find((c) => c.id === chapterId);
       if (updated) {
-        if (ta) ta.value = updated.narrative;
-        ta?.classList.remove("narrating");
+        setNarrating(chapterId, false);
+        setNarrView(updated);
         restampMarks(updated);
       }
     } catch (e) {
-      ta?.classList.remove("narrating");
+      setNarrating(chapterId, false);
       if (e?.needsConfirm) {
         if (confirm("re-run overwrites your edited narrative — regenerate?"))
           await rerunChapterUi(chapterId, true);
@@ -488,7 +519,7 @@ function wireSession(session, route = null) {
     }
   };
   for (const c of current.chapters.filter((c) => c.narrative === "unanalyzed"))
-    rerunChapterUi(c.id);
+    if (narrBox(c.id)?.dataset.editing !== "true") rerunChapterUi(c.id);
   document.querySelectorAll("button.rerun").forEach((btn) => {
     btn.onclick = () => {
       const chapter = current.chapters[Number(btn.dataset.i)];
@@ -591,13 +622,48 @@ function wireSession(session, route = null) {
     btn.onclick = () => btn.closest(".chapter").classList.toggle("collapsed");
   });
 
-  document.querySelectorAll("textarea.narrative").forEach((ta) => {
-    ta.onchange = async () => {
+  // narrative editing (§18): read view (rendered markdown) by default; the
+  // edit button swaps in a textarea + save/cancel; save PATCHes the markdown
+  // text verbatim (narrativeEdited → re-run asks, via rerunChapterUi)
+  const enterEdit = (chapter) => {
+    const box = narrBox(chapter?.id ?? "");
+    if (!box) return;
+    box.dataset.editing = "true";
+    const ta = box.querySelector("textarea.narrative");
+    ta.value = chapter.narrative === "unanalyzed" ? "" : chapter.narrative;
+    box.querySelector(".narrative-view").hidden = true;
+    ta.hidden = false;
+    box.querySelector(".narrative-actions").hidden = false;
+    ta.focus();
+  };
+  const exitEdit = (chapter) => {
+    const box = narrBox(chapter?.id ?? "");
+    if (!box) return;
+    delete box.dataset.editing;
+    box.querySelector(".narrative-view").hidden = false;
+    box.querySelector("textarea.narrative").hidden = true;
+    box.querySelector(".narrative-actions").hidden = true;
+    const editBtn = box.closest(".chapter").querySelector(".narr-edit");
+    if (editBtn) editBtn.hidden = box.classList.contains("narrating");
+  };
+  document.querySelectorAll("button.narr-edit").forEach((btn) => {
+    btn.onclick = () => enterEdit(current.chapters[Number(btn.dataset.i)]);
+  });
+  document.querySelectorAll(".narrative-box").forEach((box) => {
+    const chapterOf = () => current.chapters.find((c) => c.id === box.dataset.chapter);
+    box.querySelector(".narr-cancel").onclick = () => exitEdit(chapterOf());
+    box.querySelector(".narr-save").onclick = async () => {
+      const ch = chapterOf();
+      if (!ch) return;
+      const text = box.querySelector("textarea.narrative").value;
       try {
         current = await mut("PATCH", `/api/sessions/${encodeURIComponent(current.id)}`, {
           lastWriteAt: current.lastWriteAt,
-          narrative: { chapterId: ta.dataset.chapter, text: ta.value },
+          narrative: { chapterId: ch.id, text },
         });
+        const updated = current.chapters.find((c) => c.id === ch.id);
+        setNarrView(updated); // content may have gone placeholder → text
+        exitEdit(updated);
       } catch (e) {
         if (e?.status === 409) {
           if (confirm("session changed elsewhere — reload?")) location.reload();

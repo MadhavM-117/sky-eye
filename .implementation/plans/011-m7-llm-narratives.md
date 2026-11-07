@@ -75,3 +75,17 @@ Decisions settled at task start (§22.2, confirmed by user 2025-06):
 `npm run check && npm test`; manual: tmp/demo with a config pointing at a
 local OpenAI-compatible server (or a stub adapter script) — open session,
 narratives fill in, edit one, re-run asks.
+
+## Follow-up (user feedback): narrative reading/editing UX
+
+- Default = rendered view: `Chapter.narrative` (markdown string) rendered as
+  HTML by a small escape-first renderer (`src/public/markdown.js`, no new
+  dependency; XSS-safe by construction). "unanalyzed"/empty → placeholder.
+- Loading: `.narrative-load` spinner + "analyzing…" while a rerun is in
+  flight; the edit button is hidden during that window.
+- Editing only via an edit button → textarea + save/cancel; save PATCHes as
+  before (markdown text stored verbatim). Auto-narrate skips chapters whose
+  editor is open (never trample a draft).
+- Docs folded back: spec §18 + ux §3.2 narrative description; design §6a
+  "editable text field" → rendered view + edit button.
+- Test: markdown renderer fixtures in tests/markdown.test.ts (pure, node).
