@@ -8,6 +8,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { serve } from "../src/server.ts";
 import "../src/routes.ts";
+import { buildDiff, parseUnifiedDiff } from "../src/diff.ts";
 
 const git = (repo: string, ...args: string[]) =>
   execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
@@ -713,4 +714,22 @@ test("rerun: no config → skip; custom adapter → narrative + confirm guard (s
     assert.equal(confirmed.body.chapters[0].narrative, "generated narrative");
     assert.ok(edited.body.chapters[0].narrativeEdited);
   });
+});
+
+test("buildDiff is config-proof against diff.mnemonicPrefix", async () => {
+  // task 012: a user's mnemonicPrefix config would otherwise make git emit
+  // c/w prefixes that parseUnifiedDiff can't handle (silent 0-file parse)
+  const repo = makeRepo();
+  try {
+    git(repo, "config", "diff.mnemonicPrefix", "true");
+    const text = await buildDiff(repo, "git", "main", "feature");
+    const files = parseUnifiedDiff(text);
+    assert.ok(files.length > 0, `expected files, got: ${text.slice(0, 200)}`);
+    assert.deepEqual(
+      files.map((f) => f.path).sort(),
+      ["base.txt", "src/a.ts"],
+    );
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });

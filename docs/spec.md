@@ -192,10 +192,12 @@ Failures (read-only fs) → warning, continue.
 
 ### 7.1 Generation
 
-- git: `git diff --no-color --no-ext-diff --no-renames -U3 --end-of-options <base>...<head> --` —
+- git: `git -c diff.mnemonicPrefix=false diff --no-color --no-ext-diff --no-renames -U3 --end-of-options <base>...<head> --` —
   three-dot diff (diff against merge-base), matching the "default base = merge-base"
   semantics. Rename detection **off** (`--no-renames`): a rename is
-  reviewed as delete + add (D§6 deliberate cut).
+  reviewed as delete + add (D§6 deliberate cut). `diff.mnemonicPrefix=false`
+  overrides a user config that would emit `c/`/`i/`/`w/` path prefixes and
+  silently break parsing (§7.2 expects `a/`/`b/`).
 - jj: `jj diff --git --no-color --context 3 --from <base> --to <head>`. `--git`
   emits standard unified-diff format; parse identically. Note: jj's hunk
   headers may lack the funcname context git provides (see Open Questions).

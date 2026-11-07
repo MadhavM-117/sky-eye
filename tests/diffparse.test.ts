@@ -131,6 +131,24 @@ test("hunk without funcname parses", () => {
   assert.equal(files[0].hunks[0].newLines, 1);
 });
 
+test("mnemonic-prefix diff (foreign input) parses with stripped paths", () => {
+  // emitted by git with diff.mnemonicPrefix=true — buildDiff passes
+  // --no-mnemonic-prefix so we never see this ourselves, but parsing
+  // stays config-proof for externally generated diffs (task 012)
+  const files = parseUnifiedDiff(`diff --git c/src/x.ts w/src/x.ts
+index 111..222 100644
+--- c/src/x.ts
++++ w/src/x.ts
+@@ -1 +1 @@
+-old
++new
+`);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].path, "src/x.ts");
+  assert.equal(files[0].oldPath, "src/x.ts");
+  assert.equal(files[0].status, "modified");
+});
+
 test("empty diff → no files", () => {
   assert.deepEqual(parseUnifiedDiff(""), []);
 });

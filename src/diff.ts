@@ -19,7 +19,11 @@ export async function buildDiff(
   }
   return run(
     "git",
-    ["diff", "--no-color", "--no-ext-diff", "--no-renames", "-U3",
+    // -c diff.mnemonicPrefix=false: a user's mnemonicPrefix config would emit
+    // c/w (or i/w) path prefixes that parseUnifiedDiff can't handle (there is
+    // no --no-mnemonic-prefix option)
+    ["-c", "diff.mnemonicPrefix=false", "diff",
+      "--no-color", "--no-ext-diff", "--no-renames", "-U3",
       "--end-of-options", `${base}...${head}`, "--"],
     root,
   );
@@ -30,11 +34,16 @@ export function diffDigest(text: string): string {
 }
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
-const DIFF_GIT = /^diff --git a\/(.*) b\/(.*)$/;
+// mnemonicPrefix variants (c/i/o old side, w/n new side) only appear in
+// foreign diffs — ours always emit a/ b/ via --no-mnemonic-prefix
+const DIFF_GIT = /^diff --git (?:a|c|i|o)\/(.*) (?:b|n|w)\/(.*)$/;
 
-// `--- a/<path>` / `--- <path>` — strip the a/ b/ prefix; /dev/null stays
+// `--- a/<path>` / `--- <path>` — strip the a/ b/ prefix; /dev/null stays.
+// Foreign diffs with mnemonic prefixes (c/ i/ n/ o/ w/) get stripped too;
+// ours always carry a/ b/ so this never mis-fires on real i/… dirs.
 function stripPathPrefix(s: string): string {
-  return s === "/dev/null" ? s : s.replace(/^[ab]\//, "").trim();
+  if (s === "/dev/null") return s;
+  return s.replace(/^(?:[ab]|[cinow])\//, "").trim();
 }
 
 export function parseUnifiedDiff(text: string): FileDiff[] {
