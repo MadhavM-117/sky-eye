@@ -5,8 +5,10 @@ import { ApiError, validateRef } from "./cli.ts";
 import { getRefs } from "./refs.ts";
 import { listTree, listTreeRecursive, readFileAt } from "./tree.ts";
 import {
+  archiveSession,
   createComment,
   createSession,
+  deleteSession,
   importSession,
   listSessions,
   loadSession,
@@ -14,6 +16,7 @@ import {
   patchSession,
   readSessionRaw,
   sessionId,
+  unarchiveSession,
 } from "./store.ts";
 import { checkStale, refreshSession } from "./remap.ts";
 import { rerunChapter } from "./narrate.ts";
@@ -36,7 +39,10 @@ route("GET", "/api/file", async ({ root, kind, url }) => {
   return readFileAt(root, kind, ref, p);
 });
 
-route("GET", "/api/sessions", ({ root }) => listSessions(root));
+route("GET", "/api/sessions", ({ root, url }) =>
+  // ?archived=1 lists .sky-watch/archive/ instead (task 017, spec §10)
+  listSessions(root, url.searchParams.get("archived") === "1"),
+);
 
 route("GET", "/api/sessions/:id", async ({ root, kind, params }) => {
   const session = loadSession(root, sessionId(params.id));
@@ -92,6 +98,17 @@ route("POST", "/api/sessions/:id/rerun", async ({ root, kind, params, body }) =>
   const b = body as { chapterId?: string; confirm?: boolean };
   if (!b.chapterId) throw new ApiError(400, "chapterId is required");
   return rerunChapter(root, kind, loadSession(root, sessionId(params.id)), b.chapterId, b.confirm === true);
+});
+
+// archive/delete (task 017, spec §10): archive moves the file into
+// .sky-watch/archive/ (restore via unarchive), delete removes it permanently
+route("POST", "/api/sessions/:id/archive", ({ root, params }) =>
+  archiveSession(root, params.id));
+route("POST", "/api/sessions/:id/unarchive", ({ root, params }) =>
+  unarchiveSession(root, params.id));
+route("DELETE", "/api/sessions/:id", ({ root, params }) => {
+  deleteSession(root, params.id);
+  return { deleted: true };
 });
 
 // export (§14): raw session file as a download — verbatim, not re-serialized

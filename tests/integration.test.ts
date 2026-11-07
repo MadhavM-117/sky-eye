@@ -737,3 +737,38 @@ test("buildDiff is config-proof against diff.mnemonicPrefix", async () => {
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test("archive/delete: archive moves the file, unarchive restores, delete removes (task 017)", async () => {
+  await withServer(async (_port, repo) => {
+    const refs = await get("/api/refs");
+    const created = await mut("POST", "/api/sessions", {
+      base: refs.body.defaultBase.id,
+      head: refs.body.head.id,
+    });
+    const id = created.body.id;
+    const enc = encodeURIComponent(id);
+
+    // archive → leaves the active list + 404s on load; archived list has it
+    assert.equal((await mut("POST", `/api/sessions/${enc}/archive`, {})).status, 200);
+    assert.equal((await get("/api/sessions")).body.length, 0);
+    const archived = await get("/api/sessions?archived=1");
+    assert.equal(archived.body.length, 1);
+    assert.equal(archived.body[0].id, id);
+    await get(`/api/sessions/${enc}`, 404);
+    assert.ok(fs.existsSync(path.join(repo, ".sky-watch", "archive", `${id}.json`)));
+    assert.ok(!fs.existsSync(path.join(repo, ".sky-watch", `${id}.json`)));
+
+    // unarchive → back in the active list, loadable again
+    assert.equal((await mut("POST", `/api/sessions/${enc}/unarchive`, {})).status, 200);
+    assert.equal((await get("/api/sessions")).body.length, 1);
+    assert.equal((await get("/api/sessions?archived=1")).body.length, 0);
+    assert.equal((await get(`/api/sessions/${enc}`)).body.id, id);
+
+    // archive again, delete removes the archived file for good
+    await mut("POST", `/api/sessions/${enc}/archive`, {});
+    assert.equal((await mut("DELETE", `/api/sessions/${enc}`, {})).status, 200);
+    assert.equal((await get("/api/sessions?archived=1")).body.length, 0);
+    await mut("DELETE", `/api/sessions/${enc}`, {});
+    assert.equal((await mut("DELETE", `/api/sessions/${enc}`, {})).status, 404);
+  });
+});

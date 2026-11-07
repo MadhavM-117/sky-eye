@@ -85,7 +85,11 @@ function shell(title, inner) {
 // ---- first screen ------------------------------------------------------
 
 async function renderFirst() {
-  const [refs, sessions] = await Promise.all([get("/api/refs"), get("/api/sessions")]);
+  const [refs, sessions, archived] = await Promise.all([
+    get("/api/refs"),
+    get("/api/sessions"),
+    get("/api/sessions?archived=1"),
+  ]);
 
   const opt = (value, label) => `<option value="${esc(value)}">${esc(label)}</option>`;
   const groups = [];
@@ -124,7 +128,17 @@ async function renderFirst() {
           ${s.reviewed ? `<span class="chip reviewed">reviewed</span>` : ""}
           <span class="meta">${s.openComments} open · ${new Date(s.updatedAt).toLocaleString()}</span>
         </a></li>`).join("")}</ul>`}
-    </section>`);
+    </section>
+    ${archived.length ? `
+    <section class="archived">
+      <h2><button id="archive-toggle">archived (${archived.length}) ▾</button></h2>
+      <ul class="session-list" id="archive-list" hidden>${archived.map((s) => `
+        <li><span class="label">${esc(s.label ?? s.id)}</span>
+          <span class="meta">${new Date(s.updatedAt).toLocaleString()}</span>
+          <button class="unarchive" data-id="${esc(s.id)}" title="back into the session list">restore</button>
+          <button class="delete-archived" data-id="${esc(s.id)}">delete</button>
+        </li>`).join("")}</ul>
+    </section>` : ""}`);
 
   document.getElementById("create").onclick = async () => {
     const base = document.getElementById("base").value;
@@ -145,6 +159,36 @@ async function renderFirst() {
       alert(e?.error ?? "could not create session");
     }
   };
+
+  // archived reviews (task 017): collapsed until expanded; restore puts the
+  // review back into the session list, delete is permanent
+  const archiveToggle = document.getElementById("archive-toggle");
+  if (archiveToggle)
+    archiveToggle.onclick = () => {
+      const list = document.getElementById("archive-list");
+      list.hidden = !list.hidden;
+      archiveToggle.textContent =
+        `archived (${archived.length}) ${list.hidden ? "▾" : "▴"}`;
+    };
+  for (const btn of document.querySelectorAll("button.unarchive"))
+    btn.onclick = async () => {
+      try {
+        await mut("POST", `/api/sessions/${encodeURIComponent(btn.dataset.id)}/unarchive`);
+        renderFirst();
+      } catch (e) {
+        alert(e?.error ?? "could not restore");
+      }
+    };
+  for (const btn of document.querySelectorAll("button.delete-archived"))
+    btn.onclick = async () => {
+      if (!confirm("delete this review permanently?")) return;
+      try {
+        await mut("DELETE", `/api/sessions/${encodeURIComponent(btn.dataset.id)}`);
+        renderFirst();
+      } catch (e) {
+        alert(e?.error ?? "could not delete");
+      }
+    };
 
   // import (§14): pick an exported session file → merged into the session
   // with the same id (or created), then open it
@@ -191,6 +235,8 @@ function renderSession(session, route = null) {
       <a class="explorer-link" href="#${esc(session.id)}/explorer//head">files</a>
       <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
       <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export">export</a>
+      <button id="archive" title="move out of the session list (restorable from the first screen)">archive</button>
+      <button id="delete-review" title="delete permanently">delete</button>
     </header>
     ${bannersHtml(session)}
     <div class="chapters">${chaptersHtml}</div>`);
@@ -620,6 +666,26 @@ function wireSession(session, route = null) {
 
   document.querySelectorAll(".collapse").forEach((btn) => {
     btn.onclick = () => btn.closest(".chapter").classList.toggle("collapsed");
+  });
+
+  // archive / delete (task 017, spec §10): archive leaves the session list
+  // (findable + restorable on the first screen); delete is permanent
+  document.getElementById("archive")?.addEventListener("click", async () => {
+    try {
+      await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/archive`);
+      location.hash = "";
+    } catch (e) {
+      alert(e?.error ?? "could not archive");
+    }
+  });
+  document.getElementById("delete-review")?.addEventListener("click", async () => {
+    if (!confirm("delete this review permanently?")) return;
+    try {
+      await mut("DELETE", `/api/sessions/${encodeURIComponent(current.id)}`);
+      location.hash = "";
+    } catch (e) {
+      alert(e?.error ?? "could not delete");
+    }
   });
 
   // narrative editing (§18): read view (rendered markdown) by default; the

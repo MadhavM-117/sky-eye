@@ -27,7 +27,10 @@ export function sessionId(id: string): string {
 }
 
 const dir = (root: string) => path.join(root, ".sky-watch");
+const archiveDir = (root: string) => path.join(dir(root), "archive");
 const fileFor = (root: string, id: string) => path.join(dir(root), `${id}.json`);
+const archiveFileFor = (root: string, id: string) =>
+  path.join(archiveDir(root), `${id}.json`);
 
 function readSession(root: string, id: string): Session | undefined {
   try {
@@ -70,6 +73,37 @@ export function writeSession(root: string, session: Session): Session {
 // header cache by mtime so /api/sessions doesn't reparse everything (spec §9.2)
 const headerCache = new Map<string, { mtime: number; header: SessionListEntry }>();
 
+// archive (task 017): the file moves, nothing is rewritten — a restored or
+// re-listed archived session is byte-identical to the one archived
+export function archiveSession(root: string, id: string): SessionListEntry {
+  const file = fileFor(root, sessionId(id));
+  if (!fs.existsSync(file)) throw new ApiError(404, `unknown session: ${id}`);
+  fs.mkdirSync(archiveDir(root), { recursive: true });
+  fs.renameSync(file, archiveFileFor(root, id));
+  headerCache.delete(file);
+  return headerOf(root, archiveFileFor(root, id))!;
+}
+
+export function unarchiveSession(root: string, id: string): SessionListEntry {
+  const file = archiveFileFor(root, sessionId(id));
+  if (!fs.existsSync(file)) throw new ApiError(404, `archived session not found: ${id}`);
+  fs.renameSync(file, fileFor(root, id));
+  headerCache.delete(file);
+  return headerOf(root, fileFor(root, id))!;
+}
+
+export function deleteSession(root: string, id: string): void {
+  // active or archived — whichever exists (deleting twice → 404)
+  for (const file of [fileFor(root, id), archiveFileFor(root, id)]) {
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+      headerCache.delete(file);
+      return;
+    }
+  }
+  throw new ApiError(404, `unknown session: ${id}`);
+}
+
 export interface SessionListEntry {
   id: string;
   aliases: string[];
@@ -105,15 +139,17 @@ function headerOf(root: string, file: string): SessionListEntry | null {
   }
 }
 
-export function listSessions(root: string): SessionListEntry[] {
+export function listSessions(root: string, archived = false): SessionListEntry[] {
+  const listDir = archived ? archiveDir(root) : dir(root);
   let files: string[] = [];
   try {
+    // non-recursive: subdirs (archive/, logs/) never appear as entries
     files = fs
-      .readdirSync(dir(root))
+      .readdirSync(listDir)
       .filter((f) => f.endsWith(".json"))
-      .map((f) => path.join(dir(root), f));
+      .map((f) => path.join(listDir, f));
   } catch {
-    return []; // no .sky-watch yet
+    return []; // no .sky-watch (or archive/) yet
   }
   return files
     .map((f) => headerOf(root, f))
