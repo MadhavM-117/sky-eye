@@ -6,18 +6,22 @@ import type { Chapter, Comment, Hunk } from "../src/types.ts";
 
 const lines = (...texts: string[]) => texts;
 
-// chapter whose hunk renders new-side lines [start, start+count)
+// chapter whose slice for `file` renders new-side lines [start, start+count)
 const chapter = (file: string, ranges: [number, number][]): Chapter => ({
   id: "ch-fixed",
-  file,
-  status: "modified",
-  hunks: ranges.map(([newStart, count]): Hunk => ({
-    oldStart: newStart,
-    newStart,
-    oldLines: count,
-    newLines: count,
-    lines: [],
-  })),
+  files: [
+    {
+      file,
+      status: "modified" as const,
+      hunks: ranges.map(([newStart, count]): Hunk => ({
+        oldStart: newStart,
+        newStart,
+        oldLines: count,
+        newLines: count,
+        lines: [],
+      })),
+    },
+  ],
   narrative: "",
   attention: [],
 });

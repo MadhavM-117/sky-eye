@@ -222,26 +222,35 @@ const triageItem = (c) => `
   </div>`;
 
 function chapterHtml(session, c, index) {
-  const encFile = encodeURIComponent(c.file);
-  const [add, del] = c.hunks.reduce(
-    ([a, d], h) => [
-      a + h.lines.filter((l) => l.type === "add").length,
-      d + h.lines.filter((l) => l.type === "del").length,
+  const [add, del] = c.files.reduce(
+    ([a, d], s) => [
+      a + s.hunks.reduce((n, h) => n + h.lines.filter((l) => l.type === "add").length, 0),
+      d + s.hunks.reduce((n, h) => n + h.lines.filter((l) => l.type === "del").length, 0),
     ],
     [0, 0],
   );
+  // a chapter may span files (spec §9.3): one diff block per file slice
+  const blocks = c.files
+    .map(
+      (s) => `
+      <h3 class="file-head">
+        <a class="file-link" href="#${esc(session.id)}/explorer/${encodeURIComponent(s.file)}/head">${esc(s.file)}</a>
+        <span class="status ${s.status}">${s.status}</span>
+      </h3>
+      <div class="diff-holder" data-chapter="${c.id}" data-file="${esc(s.file)}"></div>`,
+    )
+    .join("");
   return `
   <section class="chapter" data-chapter="${c.id}">
     <h2 class="chapter-head">
       <button class="collapse" data-i="${index}">▾</button>
-      <a class="file-link" href="#${esc(session.id)}/explorer/${encFile}/head">${esc(c.file)}</a>
-      <span class="status ${c.status}">${c.status}</span>
+      <span class="chapter-title">chapter ${index + 1}</span>
       <span class="stats">${del || !add ? `<span class="del">−${del}</span> ` : ``}<span class="add">+${add}</span></span>
     </h2>
     <div class="chapter-body">
       <textarea class="narrative" data-chapter="${c.id}" rows="2"
         placeholder="what's happening in this chapter…">${esc(c.narrative)}</textarea>
-      <div class="diff-holder" data-chapter="${c.id}"></div>
+      ${blocks}
     </div>
   </section>`;
 }
@@ -265,18 +274,22 @@ function wireSession(session, route = null) {
     return current;
   };
   const refreshAll = () => {
-    for (const [chapterId, inst] of diffs) {
+    for (const [key, inst] of diffs) {
+      const [chapterId, file] = key.split("\u0000");
       const chapter = current.chapters.find((c) => c.id === chapterId);
-      if (chapter) updateAnnotations(inst, annotationsFor(chapter));
+      if (chapter) updateAnnotations(inst, annotationsFor(chapter, file));
     }
   };
-  const annotationsFor = (chapter) =>
+  // annotations are per file slice inside a chapter (task 009)
+  const annotationsFor = (chapter, file) =>
     commentAnnotations(
-      current.comments.filter((c) => c.chapterId === chapter.id),
-      composer.state?.chapterId === chapter.id ? composer.state : null,
+      current.comments.filter((c) => c.chapterId === chapter.id && c.file === file),
+      composer.state?.chapterId === chapter.id && composer.state.file === file
+        ? composer.state
+        : null,
     );
 
-  const postComment = async (chapter, text, priority) => {
+  const postComment = async (chapter, file, text, priority) => {
     if (!text.trim()) return;
     const state = composer.state;
     composer.state = null;
@@ -284,7 +297,7 @@ function wireSession(session, route = null) {
       await mut("POST", "/api/comments", {
         sessionId: current.id,
         chapterId: chapter.id,
-        file: chapter.file,
+        file,
         side: state.side,
         line: state.line,
         text,
@@ -313,14 +326,14 @@ function wireSession(session, route = null) {
   };
 
   // annotation row for one diff line: stored comments + optional composer
-  const annotationRow = (annotation, chapter) => {
+  const annotationRow = (annotation, chapter, file) => {
     const row = document.createElement("div");
     row.className = "sky-comment-row";
     for (const entry of annotation.metadata.comments) {
       if (entry.composer) {
         row.append(
           composerNode(composer.state, {
-            onSubmit: (text, priority) => postComment(chapter, text, priority),
+            onSubmit: (text, priority) => postComment(chapter, file, text, priority),
             onCancel: () => {
               composer.state = null;
               refreshAll();
@@ -340,31 +353,37 @@ function wireSession(session, route = null) {
     return row;
   };
 
+  // one diff block per file slice inside a chapter (task 009)
   document.querySelectorAll(".diff-holder").forEach((holder) => {
     const chapter = current.chapters.find((c) => c.id === holder.dataset.chapter);
+    const file = holder.dataset.file;
+    const slice = chapter?.files.find((s) => s.file === file);
     const diff = createFileDiff(
-      { path: chapter.file, status: chapter.status },
-      chapter.hunks,
+      { path: slice.file, status: slice.status },
+      slice.hunks,
       {
-        annotations: annotationsFor(chapter),
+        annotations: annotationsFor(chapter, file),
         // gutter click → composer at that line (toggle on same line);
         // while a triage re-pin is pending, the click re-pins instead
         onLineNumberClick: ({ lineNumber, annotationSide }) => {
           const side = selectionSide({ annotationSide });
-          if (triage && triage.file === chapter.file) {
+          if (triage && triage.file === file) {
             const comment = triage;
             triage = null;
             renderTriage();
             patchComment(comment, {
-              reanchor: { chapterId: chapter.id, file: chapter.file, side, line: lineNumber },
+              reanchor: { chapterId: chapter.id, file, side, line: lineNumber },
             });
             return;
           }
           const same =
             composer.state?.chapterId === chapter.id &&
+            composer.state.file === file &&
             composer.state.side === side &&
             composer.state.line === lineNumber;
-          composer.state = same ? null : { chapterId: chapter.id, side, line: lineNumber };
+          composer.state = same
+            ? null
+            : { chapterId: chapter.id, file, side, line: lineNumber };
           refreshAll();
         },
         // gutter drag across lines never fires a click — comment on the
@@ -373,22 +392,23 @@ function wireSession(session, route = null) {
           if (!range || range.end <= range.start) return; // click handled above
           composer.state = {
             chapterId: chapter.id,
+            file,
             side: selectionSide(range),
             line: range.start,
           };
           refreshAll();
         },
-        renderAnnotation: (annotation) => annotationRow(annotation, chapter),
+        renderAnnotation: (annotation) => annotationRow(annotation, chapter, file),
         // hover + button in the gutter (U§3.2 copy-link); the callback gets
         // the line range — single click = one line
         onGutterUtilityClick: (range) =>
           copyLink(
-            `#${current.id}/${chapter.id}/${encodeURIComponent(chapter.file)}/${range.start}`,
+            `#${current.id}/${chapter.id}/${encodeURIComponent(file)}/${range.start}`,
           ),
       },
     );
     if (diff) {
-      diffs.set(chapter.id, diff);
+      diffs.set(`${chapter.id}\u0000${file}`, diff);
       holder.appendChild(diff.el);
     } else holder.innerHTML = `<div class="banner">binary file — no textual diff</div>`;
   });
@@ -415,15 +435,17 @@ function wireSession(session, route = null) {
       tick();
     };
     if (route.target === "line") {
-      const chapter = current.chapters.find((c) => c.id === route.chapterId);
-      if (chapter)
+      // diffs are keyed chapter\u0000file (multi-file chapters, task 009)
+      const inst = diffs.get(`${route.chapterId}\u0000${route.file}`);
+      if (inst)
         tryScroll(() =>
-          queryRow(diffs.get(chapter.id), "new", route.line) ??
-          queryRow(diffs.get(chapter.id), "old", route.line),
+          queryRow(inst, "new", route.line) ?? queryRow(inst, "old", route.line),
         );
     } else if (current.comments.some((c) => c.id === route.target)) {
       const comment = current.comments.find((c) => c.id === route.target);
-      tryScroll(() => queryComment(diffs.get(comment.chapterId), comment.id));
+      tryScroll(() =>
+        queryComment(diffs.get(`${comment.chapterId}\u0000${comment.file}`), comment.id),
+      );
     } else {
       const chapter = current.chapters.find((c) => c.id === route.target);
       diffs.get(chapter?.id)?.el.scrollIntoView({ block: "start" });
@@ -447,8 +469,10 @@ function wireSession(session, route = null) {
       b.onclick = () => {
         triage = current.comments.find((c) => c.id === b.dataset.comment);
         renderTriage();
-        const chapter = current.chapters.find((c) => c.file === triage.file);
-        diffs.get(chapter?.id)?.el.scrollIntoView({ block: "center" });
+        const chapter = current.chapters.find((c) =>
+          c.files.some((s) => s.file === triage.file),
+        );
+        diffs.get(`${chapter?.id}\u0000${triage.file}`)?.el.scrollIntoView({ block: "center" });
       };
     });
     el.querySelectorAll(".triage-resolve").forEach((b) => {

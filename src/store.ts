@@ -12,7 +12,7 @@ import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
 // re-exported for remap.ts (refresh flows persist through the same path)
 export { writeSession as persistSession };
 import { readFileAt } from "./tree.ts";
-import type { Anchor, Comment, Hunk, Session } from "./types.ts";
+import type { Anchor, Chapter, Comment, Hunk, Session } from "./types.ts";
 
 // traversal-safe session ids (spec §9.2): `..` is a substring by design
 export const VALID_SESSION_ID =
@@ -37,6 +37,9 @@ function readSession(root: string, id: string): Session | undefined {
 export function loadSession(root: string, id: string): Session {
   const s = readSession(root, sessionId(id));
   if (!s) throw new ApiError(404, `unknown session: ${id}`);
+  // pre-multi-file sessions (task 009 decision) are stale cache, not loadable
+  if (s.chapters?.some((c) => !Array.isArray((c as Chapter).files)))
+    throw new ApiError(404, `stale session schema, create a new review: ${id}`);
   return s;
 }
 
@@ -71,6 +74,9 @@ function headerOf(root: string, file: string): SessionListEntry | null {
     const cached = headerCache.get(file);
     if (cached && cached.mtime === mtime) return cached.header;
     const session = JSON.parse(fs.readFileSync(file, "utf8")) as Session;
+    // pre-multi-file sessions (task 009 decision) are stale cache — don't list
+    if (session.chapters?.some((c) => !Array.isArray((c as Chapter).files)))
+      return null;
     const header: SessionListEntry = {
       id,
       aliases: session.aliases ?? [],
@@ -119,7 +125,9 @@ export async function createSession(
     throw new ApiError(400, `cannot form a session id from ${base}..${head}`);
 
   const existing = readSession(root, id);
-  if (existing) return { session: existing, created: false }; // 200, no duplicate (U§1.5)
+  // pre-multi-file sessions (task 009 decision) count as absent — rebuild
+  if (existing && Array.isArray(existing.chapters) && existing.chapters.every((c) => Array.isArray((c as Chapter).files)))
+    return { session: existing, created: false }; // 200, no duplicate (U§1.5)
 
   const diffText = await buildDiff(root, kind, baseId, headId);
   const config = loadConfig(root);
@@ -188,7 +196,10 @@ function validateCommentTarget(
 } {
   const chapter = session.chapters.find((c) => c.id === t.chapterId);
   if (!chapter) throw new ApiError(404, `unknown chapter: ${t.chapterId}`);
-  if (typeof t.file !== "string" || t.file !== chapter.file)
+  if (
+    typeof t.file !== "string" ||
+    !chapter.files.some((s) => s.file === t.file)
+  )
     throw new ApiError(400, `file does not match chapter`);
   if (t.side !== "old" && t.side !== "new")
     throw new ApiError(400, `side must be "old" or "new"`);
@@ -218,7 +229,8 @@ async function freshAnchor(
   }
   const chapter = session.chapters.find((c) => c.id === t.chapterId);
   return captureAnchorFromHunks(
-    chapter?.hunks ?? ([] as Hunk[]), t.file, t.side, t.line, t.chapterId,
+    chapter?.files.find((s) => s.file === t.file)?.hunks ?? ([] as Hunk[]),
+    t.file, t.side, t.line, t.chapterId,
   );
 }
 

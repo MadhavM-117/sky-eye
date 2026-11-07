@@ -54,18 +54,22 @@ function contextScore(anchor: Anchor, lines: string[], i: number): number {
   return score;
 }
 
-// rebuilt chapter whose hunks render this new-side line (spec §13.3.4)
+// rebuilt chapter whose slice for `file` renders this new-side line
+// (spec §13.3.4); a file may be split across chapters — use the one with the
+// line
 function chapterForLine(
   chapters: Chapter[],
   file: string,
   line: number,
 ): Chapter | undefined {
-  return chapters.find(
-    (c) =>
-      c.file === file &&
-      c.hunks.some(
-        (h) => line >= h.newStart && line < h.newStart + h.newLines,
-      ),
+  return chapters.find((c) =>
+    c.files.some(
+      (s) =>
+        s.file === file &&
+        s.hunks.some(
+          (h) => line >= h.newStart && line < h.newStart + h.newLines,
+        ),
+    ),
   );
 }
 

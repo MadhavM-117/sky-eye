@@ -26,11 +26,20 @@ export interface FileDiff {
 }
 
 export type LineMark = {
+  file: string; // multi-file chapters: marks are per file slice (spec §9.3)
   side: "old" | "new";
   line: number;
   mark: "focus" | "glance" | "safe";
   markSource: "rules" | "llm";
 };
+
+// one file's part of a chapter (spec §8: a chapter may span files, one
+// contiguous slice per file, in path order)
+export interface FileSlice {
+  file: string;
+  status: FileDiff["status"];
+  hunks: Hunk[];
+}
 
 export interface Anchor {
   file: string;
@@ -61,9 +70,7 @@ export interface Comment {
 
 export interface Chapter {
   id: string;
-  file: string;
-  status: "modified" | "added" | "deleted";
-  hunks: Hunk[];
+  files: FileSlice[];
   narrative: string;
   narrativeEdited?: boolean;
   attention: LineMark[];

@@ -136,7 +136,15 @@ test("integration: refs, tree, file, sessions, security", async () => {
     assert.equal(created.status, 201);
     const session = created.body;
     assert.equal(session.id, `${baseCommit}..${head}`);
-    assert.ok(session.chapters.length >= 2, "chapters exist");
+    // base.txt + src/a.ts are small enough to merge into one multi-file chapter
+    assert.ok(session.chapters.length >= 1, "chapters exist");
+    assert.ok(
+      session.chapters.some(
+        (c: { files: { file: string }[] }) =>
+          c.files.some((s) => s.file === "src/a.ts"),
+      ),
+      "src/a.ts chunked",
+    );
     assert.ok(session.chapters.every((c: { narrative: string }) => c.narrative === "unanalyzed"));
 
     // idempotent create → 200 with the same session
@@ -203,7 +211,9 @@ test("comments: create, anchor capture, resolve, edit, conflicts (spec §12)", a
     const session = (
       await mut("POST", "/api/sessions", { base: refs.body.defaultBase.id, head })
     ).body;
-    const chapter = session.chapters.find((c: { file: string }) => c.file === "src/a.ts");
+    const chapter = session.chapters.find((c: { files: { file: string }[] }) =>
+      c.files.some((s) => s.file === "src/a.ts"),
+    );
 
     // new-side comment: anchor from the head file ("new one\ntwo\n"),
     // full 3-line context even at the hunk edge (line 1 → no before)
@@ -355,7 +365,7 @@ test("refresh: git amend supersedes, comments carried and re-pinned (spec §13.2
       (await get(`/api/sessions/${session.id}`)).body.stale,
       false,
     );
-    const chapter = session.chapters.find((c: { file: string }) => c.file === "base.txt");
+    const chapter = session.chapters.find((c: { files: { file: string }[] }) => c.files.some((s) => s.file === "base.txt"));
     const fresh = (await get(`/api/sessions/${session.id}`)).body;
     const comment = (
       await mut("POST", "/api/comments", {
@@ -400,7 +410,7 @@ test("refresh: unmatched comments orphan into triage (spec §13.3–13.4)", asyn
   await withServer(async (port, repo) => {
     portOf = port;
     const session = await openSession();
-    const chapter = session.chapters.find((c: { file: string }) => c.file === "base.txt");
+    const chapter = session.chapters.find((c: { files: { file: string }[] }) => c.files.some((s) => s.file === "base.txt"));
     const fresh = (await get(`/api/sessions/${session.id}`)).body;
     const comment = (
       await mut("POST", "/api/comments", {
@@ -425,7 +435,7 @@ test("refresh: unmatched comments orphan into triage (spec §13.3–13.4)", asyn
     const fixed = await mut("PATCH", `/api/comments/${comment.id}`, {
       sessionId: res.body.session.id,
       reanchor: {
-        chapterId: res.body.session.chapters.find((c: { file: string }) => c.file === "base.txt").id,
+        chapterId: res.body.session.chapters.find((c: { files: { file: string }[] }) => c.files.some((s) => s.file === "base.txt")).id,
         file: "base.txt", side: "new", line: 2,
       },
       lastWriteAt: afterRefresh.lastWriteAt,
@@ -468,7 +478,7 @@ test("refresh: jj change-id key survives, session updates in place (spec §13.2)
     const session = (
       await mut("POST", "/api/sessions", { base: refs.body.defaultBase.id, head: refs.body.head.id })
     ).body;
-    const chapter = session.chapters.find((c: { file: string }) => c.file === "f.txt");
+    const chapter = session.chapters.find((c: { files: { file: string }[] }) => c.files.some((s) => s.file === "f.txt"));
     const fresh = (await get(`/api/sessions/${session.id}`)).body;
     const comment = (
       await mut("POST", "/api/comments", {

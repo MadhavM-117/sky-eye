@@ -10,3 +10,6 @@ time-sensitive.
 
 Only consult these files when the topic is relevant to the current task —
 the index is the lookup table, files are read on demand.
+
+- chapter-model.md — Chapter shape (multi-file slices), session load/create
+  paths, frontend diff-instance keys
