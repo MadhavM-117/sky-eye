@@ -270,7 +270,8 @@ How a chapter summary is produced:
 
   e.g. a cheap fast model for `classify`, a stronger one for `narrate`.
   `provider` selects the adapter (§22.2): `"openai"` (default —
-  OpenAI-compatible chat completions) or `"anthropic"` (native
+  OpenAI-compatible chat completions, which also covers compatible routers
+  like OpenRouter via `baseUrl`) or `"anthropic"` (native
   `/v1/messages`); setting `command` instead makes the task use a **custom
   adapter**: an executable reading `{ "protocol": 1, "task", "model",
   "system", "prompt" }` JSON on stdin and writing `{ "text": "…" }` on

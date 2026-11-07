@@ -88,6 +88,31 @@ test("openai adapter: chat completions request shape, content extracted", async 
   assert.equal((captured!.headers as Record<string, string>).authorization, "Bearer k");
 });
 
+test("openai-compatible routers (e.g. OpenRouter) work via baseUrl alone", async () => {
+  const root = withConfig({
+    tasks: {
+      narrate: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKey: "sk-or-v1-…",
+        model: "anthropic/claude-sonnet-4",
+      },
+    },
+  });
+  const adapter = resolveTask(root, "narrate");
+  assert.ok(adapter);
+  assert.match(adapter.id, /^openai:https:\/\/openrouter\.ai\/api\/v1\/chat\/completions:/);
+  let url = "";
+  const fetchImpl = (async (u: string | URL) => {
+    url = String(u);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  }) as unknown as typeof fetch;
+  // the adapter built from config carries its baseUrl — call through it
+  const cfg = { baseUrl: "https://openrouter.ai/api/v1", apiKey: "k", model: "anthropic/claude-sonnet-4" };
+  const text = await openaiAdapter(cfg, fetchImpl).call({ task: "narrate", system: "s", prompt: "p" });
+  assert.equal(text, "ok");
+  assert.equal(url, "https://openrouter.ai/api/v1/chat/completions");
+});
+
 test("anthropic adapter: /v1/messages shape, first text block extracted", async () => {
   let captured: RequestInit | undefined;
   let url = "";
