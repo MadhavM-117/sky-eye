@@ -77,6 +77,10 @@ Rendered top to bottom:
 3. **Existing sessions** — human label (if set, else the id), branch
    aliases, `updatedAt`, open-comment count, and a reviewed chip; click to
    open.
+4. **Archived reviews** — a muted line below the list, "n archived", that
+   expands the archived reviews (label, `updatedAt`); each offers restore
+   (back into the active list) and delete (with confirm). Archived reviews
+   are not openable until restored.
 
 There is no separate landing page: if no sessions exist the list section is
 simply empty. Creating a review for a range that already has a session
@@ -103,7 +107,11 @@ Read-only in v1: no editing, no blame, no history view.
 
 Session label (click to edit; falls back to the raw id when unset), branch
 alias(es), open-comment count, reviewed toggle. Actions: refresh (below),
-re-run (chapter analysis), export. Repo path + kind badge persist here too.
+re-run (chapter analysis), regenerate all (one click re-runs marks +
+narratives for every chapter; asks once before overwriting any edited
+narrative), export, archive (review leaves the list, findable on the first
+screen), delete (confirm — permanent). Repo path + kind badge persist here
+too.
 
 **Stale session:** if the diff behind the session has changed (head moved,
 or a jj rebase rewrote the commits under it), a "review is stale — refresh?"

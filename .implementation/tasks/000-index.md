@@ -18,3 +18,7 @@ below is the current plan.
 - `012` Parser guard — **done** (`-c diff.mnemonicPrefix=false` in buildDiff — no `--no-mnemonic-prefix` option exists; DIFF_GIT/stripPathPrefix also tolerate mnemonic prefixes for foreign diffs)
 - `013` Custom-mark glyph visibility — neutral `·` invisible in dark mode → custom names render their uppercase initial in the muted color (readable, distinguishes names); spec §9.3/§18 + ux §3.2 updated — **done**
 - `014` Built-in classifier (OpenRouter decision API) — `classifier.builtin: "openrouter"` backend (`src/decisions.ts`), one `choice` question per changed line, criteria map = configurable mark names+descriptions, apiKey classifier→env→llm defaults; jev (`typesafe/jev-1.14`) is just a model on the API; exec hook unchanged and wins when both set — **done**
+- `015` Full-file renderer fix — explorer `File` view renders nothing: preload the file's language into the shared highlighter before `File.render` (pierre 1.6.4 swallows the deferred highlight re-render) — **pending**
+- `016` Logs folder — all logs in `.sky-watch/logs/`, overwritten per run, only the most recent kept — **pending**
+- `017` Archive/delete review — archive → `.sky-watch/archive/` (+ restore, `?archived=1` listing), delete permanent; header + first-screen UI — **pending**
+- `018` Regenerate all — one click re-runs rules + classifier + narrate for every chapter in place (`rerun-all`, spec §16.6) — **pending**

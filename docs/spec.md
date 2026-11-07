@@ -284,7 +284,11 @@ Question on whether a UI for this is ever needed — v1: file only).
 
 ### 9.2 File layout & atomic writes
 
-- One file per session: `.sky-watch/<sessionId>.json`.
+- One file per session: `.sky-watch/<sessionId>.json`. Archived sessions
+  move to `.sky-watch/archive/<sessionId>.json` (same format; not openable
+  in place — restore first, §10). Generated logs live in
+  `.sky-watch/logs/` (§16.5). Both are subdirectories, so `list()`
+  (non-recursive) only ever sees active sessions.
 - **Filename & CLI flag safety:** session ids from URLs, bodies, or imports
   are validated against
   `/^[0-9a-zA-Z][0-9a-zA-Z+-]*\.\.[0-9a-zA-Z][0-9a-zA-Z+-]*$/` before
@@ -340,7 +344,7 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 
 | Route | Request | Response / behavior |
 |---|---|---|
-| `GET /api/sessions` | — | `[{ id, aliases, label, updatedAt, openComments, reviewed }]` |
+| `GET /api/sessions` | — | `[{ id, aliases, label, updatedAt, openComments, reviewed }]`; `?archived=1` lists `.sky-watch/archive/` instead (same header shape) |
 | `GET /api/sessions/:id` | — | full stored `Session` plus computed `stale: boolean` (see §13.1) |
 | `GET /api/refs` | — | §5 |
 | `GET /api/tree?ref=&dir=[&recursive=1]` | — | `[{ name, type: "dir"|"file", path }]`; `dir` defaults to root; with `recursive=1` returns every *file* path at `ref`, flat (dirs derived by the client tree) — feeds the explorer's whole-repo `FileTree`, whose search needs the full path list; read from VCS object store at `ref`, repo-relative, contained (§11) |
@@ -350,6 +354,10 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `PATCH /api/sessions/:id` | `{ label?, reviewed?, narrative?: { chapterId, text }, lastWriteAt }` | updated `Session`; when `narrative` is present, saves the chapter's `narrative` and sets `narrativeEdited: true` |
 | `PATCH /api/comments/:id` | `{ sessionId, text?, resolved?, priority?, reanchor?: { chapterId, file, side, line }, lastWriteAt }` | updated `Comment` (bumps `updatedAt`); `resolved: true` stamps `resolvedAt`; `reanchor` captures a fresh server-side `anchor` and clears `orphaned` |
 | `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter; if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }`. First generation happens here too (lazy, D§6a) |
+| `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative → same 409 `needsConfirm` gate as above |
+| `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-watch/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
+| `POST /api/sessions/:id/unarchive` | — | moves an archived session back to the active list |
+| `DELETE /api/sessions/:id` | — | permanently deletes the session file, active or archived |
 | `POST /api/sessions/:id/refresh` | — | §13; returns `{ session, supersededBy? }` |
 | `GET /api/sessions/:id/export` | — | the raw session JSON as a download (`Content-Disposition: attachment`) |
 | `POST /api/import` | session JSON body | merge into session with same id (§14) → merged `Session` |
@@ -570,10 +578,22 @@ tasks). Responses answer at `answers[<qKey>].choice`.
 **Shared semantics** — a failed run (non-zero exit, timeout, HTTP error,
 malformed output) falls back to rules marks unless
 `classifier.fallback: false`, in which case marks are cleared. Every run
-logged to `.sky-watch/classifier.log`, rotated per run (`classifier.log.1`
-keeps the previous run; full transcript with `classifier.debug`);
+logged to `.sky-watch/logs/classifier.log`, overwritten per run — only the
+most recent run is kept (user decision, task 016; full transcript with
+`classifier.debug`);
 `sky-eye debug-classify <sessionId>` replays the configured backend against
 a stored session and prints the transcript.
+
+### 16.6 Regenerate all (`rerun-all`)
+
+`POST /api/sessions/:id/rerun-all` re-runs the generation pipeline in place
+on the stored diff: rules marks (§16.4) rebuilt per chapter, classifier pass
+(§16.5) re-applied, then narrative + LLM marks for every chapter — the same
+per-chapter logic as §16.2/§16.3. The stored diff/hunks are **not**
+re-generated: refresh (§13) is the tool when the underlying diff changed;
+rerun-all is for marks/narratives only. Chapter ids don't move (same diff →
+same ids, §8.5). Edited narratives are machine-overwritten only after
+`{ confirm: true }` — the UI asks once for all chapters, not per chapter.
 
 ## 17. Deep links (D§4, U§3.2)
 
@@ -594,8 +614,12 @@ Three views, hash-routed (`#` empty → first screen):
    branches / recent commits; default preselected) → "Create review" →
    existing-sessions list (label/aliases, `updatedAt`, open-comment count,
    reviewed chip). Creating an existing range opens the existing session.
+   Below the list: archived reviews (§10 archive routes) with restore +
+   delete; restore moves a review back into the active list, delete
+   (confirmed) removes it permanently.
 2. **Session view:** header (editable label, aliases, open-comment count,
-   reviewed toggle, actions: refresh / re-run / export, stale banner, orphan
+   reviewed toggle, actions: refresh / re-run / regenerate all (§16.6) /
+   export / archive / delete, stale banner, orphan
    banner) → chapters as accordion, **expanded by default**; narrative as a
    rendered markdown view above the diff (stored as markdown text verbatim,
    HTML-escaped before rendering — never raw HTML), editable only via an
