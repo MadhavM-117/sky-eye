@@ -109,7 +109,9 @@ Session label (click to edit; falls back to the raw id when unset), branch
 alias(es), open-comment count, reviewed toggle. Actions: refresh (below),
 re-run (chapter analysis), regenerate all (one click re-runs marks +
 narratives for every chapter; asks once before overwriting any edited
-narrative), export, archive (review leaves the list, findable on the first
+narrative; while it runs the button is disabled, a banner reports progress
+and each chapter shows the same "analyzing…" indicator as a per-chapter
+re-run), export, archive (review leaves the list, findable on the first
 screen), delete (confirm — permanent). Repo path + kind badge persist here
 too.
 

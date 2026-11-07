@@ -576,16 +576,31 @@ function wireSession(session, route = null) {
 
   // regenerate all (task 018, spec §16.6): one click re-runs rules marks,
   // classifier and narratives for every chapter; one confirm covers all
-  // edited narratives (server 409s with needsConfirm otherwise)
+  // edited narratives (server 409s with needsConfirm otherwise). Feedback
+  // while the sequential LLM loop runs: disabled button + progress banner,
+  // plus the per-chapter "analyzing…" indicator (same pattern as rerun).
   document.getElementById("rerun-all")?.addEventListener("click", async () => {
+    if (narrating.size) return; // lazy first-run narration already in flight
     const edited = current.chapters.some((c) => c.narrativeEdited);
     if (edited && !confirm("regenerating overwrites your edited narratives — regenerate all?")) return;
+    const btn = document.getElementById("rerun-all");
+    btn.disabled = true;
+    btn.textContent = "regenerating…";
+    const banner = document.createElement("div");
+    banner.className = "banner";
+    banner.textContent = `regenerating marks + narratives for ${current.chapters.length} chapters…`;
+    document.querySelector("header")?.insertAdjacentElement("afterend", banner);
+    for (const c of current.chapters) setNarrating(c.id, true);
     try {
       current = await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/rerun-all`, {
         confirm: edited || undefined,
       });
       renderSession(current);
     } catch (e) {
+      banner.remove();
+      btn.disabled = false;
+      btn.textContent = "regenerate";
+      for (const c of current.chapters) setNarrating(c.id, false);
       handleMutError(e);
     }
   });

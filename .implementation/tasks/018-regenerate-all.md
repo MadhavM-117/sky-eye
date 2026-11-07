@@ -7,5 +7,7 @@ place, on the stored diff.
 **Status:** **done** — `POST /api/sessions/:id/rerun-all { confirm? }`
 (spec §16.6): the per-chapter narration logic extracted from
 `rerunChapter` and reused; one 409 `needsConfirm` gate when any narrative
-is edited (UI asks once). Header button "regenerate" wired. Refresh (§13)
+is edited (UI asks once). Header button "regenerate" wired, with in-flight feedback: disabled button,
+progress banner, per-chapter "analyzing…" indicator (user feedback on the
+missing progress UX). Refresh (§13)
 stays the tool for changed diffs — rerun-all never re-generates the diff.
