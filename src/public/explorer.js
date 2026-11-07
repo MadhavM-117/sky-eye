@@ -72,7 +72,8 @@ async function renderFilePane(host, session, ref, path, sideName) {
       host.innerHTML = `<div class="banner">binary file</div>`;
       return;
     }
-    host.replaceChildren(createFileView(path, content).el);
+    const view = await createFileView(path, content);
+    host.replaceChildren(view.el);
   } catch (e) {
     host.innerHTML = `<div class="banner error">${esc(e?.error ?? "could not load file")}</div>`;
   }

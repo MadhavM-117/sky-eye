@@ -7,6 +7,7 @@ import {
   File,
   FileDiff,
   DEFAULT_THEMES,
+  getFiletypeFromFileName,
   getSharedHighlighter,
   parsePatchFiles,
   resolveTheme,
@@ -203,7 +204,19 @@ function stampMarks(root, marks) {
 // so document styles apply — see queryComment below.)
 
 // Read-only file view for the explorer (replaces the hand-rolled file pane).
-export function createFileView(path, contents) {
+// Async: File only paints its rows when the shared highlighter already has
+// the file's language — pierre defers to an async highlight when it isn't,
+// and that deferred re-render is swallowed by the "nothing changed" render
+// short-circuit (diffs 1.6.4), leaving an empty container (task 015).
+// Chapter FileDiff is unaffected: it paints plain rows first, then
+// re-tokenizes in place.
+export async function createFileView(path, contents) {
+  const lang = getFiletypeFromFileName(path) ?? "text";
+  await initPierre();
+  await getSharedHighlighter({
+    themes: [DEFAULT_THEMES.light, DEFAULT_THEMES.dark], langs: [lang],
+    preferredHighlighter: "shiki-js",
+  });
   const el = document.createElement("div");
   el.className = "pierre-file";
   const file = new File({ theme: DEFAULT_THEMES, disableFileHeader: true });

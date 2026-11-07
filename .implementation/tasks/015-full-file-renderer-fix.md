@@ -4,7 +4,7 @@
 returns, a `diffs-container` appears, but its shadow root stays empty (only
 the SVG sprite). Reproduced headlessly against `tmp/demo`.
 
-**Status:** **pending** — root cause found and fixed (see plan
+**Status:** **done** — root cause found and fixed (see plan
 `.implementation/plans/015-full-file-renderer.md`); the file's syntax
 language must be preloaded into the shared highlighter before
 `File.render`, because pierre's deferred async-highlight re-render is
