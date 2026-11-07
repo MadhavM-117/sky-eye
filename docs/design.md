@@ -65,7 +65,7 @@ files you can export and share.
 | 0b | File explorer | `tree.ts` + frontend | GitHub/GitLab-style repo tree browsing and read-only file viewing (§6b) |
 | 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines, per-file tabs or accordion |
 | 1a | Syntax highlighting | `@pierre/highlights` (via `@pierre/diffs` rendering) | tree-sitter-grade WAT/WASM highlighter, 152 languages, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
-| 2 | Chapters of ~50–100 lines (max 200, configurable) | `chunker.ts` | split hunks at file/function boundaries; keep related hunks in the same function together; config knob for max size |
+| 2 | Chapters of ~50–100 lines (max 200, configurable), spanning files when no split rule fires | `chunker.ts` | split hunks at function boundaries within a file; keep related hunks in the same function together; a chapter holds one contiguous slice per file; config knob for max size |
 | 3 | Attention highlighting (focus / glance / safe) | `classify.ts` | rule pass first (test changes, comments, lockfiles → safe; new auth/money/async/error paths → focus); LLM pass refines, opt-in |
 | 4 | Comments on lines | comments API + frontend gutter click | GitHub-style: click line → inline composer, reply, resolve |
 | 5 | Local persistence + single-file export | per-session JSON files; export = copy of the file, import = load + merge by session ID | re-verify guards against importing a review of a different commit |
@@ -133,14 +133,13 @@ Session {
 }
 
 Chapter {
-  id: string                    // stable hash of file + first hunk old/new ranges
-  file: string                  // repo-relative file path
-  status: "modified" | "added" | "deleted"
-  hunks: Hunk[]
+  id: string                    // stable hash of all file slices + first/last hunk ranges
+  files: FileSlice[]            // one contiguous slice per file, in path order
+                                // FileSlice { file, status, hunks } — a chapter may span files
   narrative: string             // what's happening here (LLM, "unanalyzed", or human-written)
   narrativeEdited?: boolean     // set when a human edited the narrative; a re-run
                                 // must confirm before overwriting it
-  attention: LineMark[]         // per-line: "focus" | "glance" | "safe"
+  attention: LineMark[]         // per-line: "focus" | "glance" | "safe"; carries the slice's file
 }
 
 Comment {

@@ -8,8 +8,10 @@ fork knowledge into conversations. This file only governs *how* we work.
 ## Task lifecycle
 
 1. **Pick a task** from `.implementation/tasks/` (one numbered file per
-   task; new todos become the next free number, never renumber). Work in
-   number order unless agreed otherwise.
+   task). Numbers reflect **execution order** for pending tasks: when a
+   foundational change needs to land earlier, renumber the pending tasks
+   (renaming files is fine). Completed tasks keep their numbers — history
+   and plan filenames reference them.
 2. **Plan first** — write `.implementation/plans/<task#>-<slug>.md` before
    implementing anything, even if its only purpose is organizing thoughts:
    what changes, which files, what could break, how it's tested. If the plan

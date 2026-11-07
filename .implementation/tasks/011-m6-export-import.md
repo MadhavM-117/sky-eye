@@ -1,4 +1,4 @@
-# 006 — M6 Export/import
+# 011 — M6 Export/import
 
 **Goal:** export a session as a single JSON download; import + merge
 (match by comment id, newer `updatedAt` wins, nothing deleted) + digest
@@ -8,7 +8,8 @@ re-verification + remap on mismatch.
 comments in repo B, re-import into A or a rebased clone B → edits/resolutions
 kept, comments re-anchor or orphan correctly, nothing lost.
 
-Spec: §14, §10 (export/import routes).
+Spec: §14, §10 (export/import routes). Multi-file chapters (009) ride along
+in the session JSON — no export-format change beyond the schema.
 
 Pierre notes (after 008): none — export/import moves server JSON only; the
 session file is pierre-agnostic by design (the adapter projects it fresh on

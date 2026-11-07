@@ -236,26 +236,30 @@ Algorithm:
 1. All hunks across all files are candidate units, ordered by `FileDiff.path`
    (alphabetical), then by position within the file.
 2. A new chapter starts when any of:
-   - the **file** changes (each chapter covers a single file `Chapter.file`), or
-   - the **function context** changes — git hunk headers carry
+   - the **function context within a file** changes — git hunk headers carry
      `@@ ... @@ <funcname>`; use it. When unavailable (jj, or git hunk
      without context), fall back to: blank-line/indentation heuristic on the
      hunk content, or simply position distance (> 30 unchanged lines
      between hunks → split).
    - the accumulated **size** would exceed the chapter target.
+   Chapters **may span multiple files**: hunks are ordered by path then
+   position; when no split rule fires, hunks of the next file continue the
+   chapter as a further slice. Each file appears at most once per chapter
+   (one contiguous slice), because the ordering groups a file's hunks.
 3. Size accounting counts **changed lines** (`add` + `del`) across the
    chapter's hunks. Target: 50–100; hard max **200** (a single unbreakable
    hunk larger than 200 stays one chapter — never split a hunk).
-4. **Keep-together rule:** hunks within the same file and function context
+4. **Keep-together rule:** hunks with the same `(file, funcname)` context
    stay in one chapter even if that pushes past `targetLines` (up to the
    `maxLines` hard max).
-5. Chapter id = first 12 hex chars of
-   `sha256("${file}:${oldStart},${oldLines}->${newStart},${newLines}")`
-   using the chapter's first hunk — the "stable hash of file + hunk range"
-   (D§4). Including both `oldStart,oldLines` and `newStart,newLines` alongside
-   the canonical `file` path guarantees unique IDs even for pure-deletion
-   chapters where `newStart = 0, newLines = 0`. Stable under re-running the
-   chunker on an identical diff; breaks when the diff changes (accepted, D§11).
+5. Chapter id = first 12 hex chars of `sha256(...)` over **all** the
+   chapter's file slices, joined by `|`, each slice hashed as
+   `${file}:${oldStart},${oldLines}->${newStart},${newLines}` — the
+   "stable hash of file(s) + hunk ranges" (D§4). Including both
+   `oldStart,oldLines` and `newStart,newLines` alongside the canonical `file`
+   path guarantees unique IDs even for pure-deletion slices where
+   `newStart = 0, newLines = 0`. Stable under re-running the chunker on an
+   identical diff; breaks when the diff changes (accepted, D§11).
 
 **Config knob:** chapter size limits live in `.sky-watch/config.json` under
 `"review": { "targetLines": 75, "maxLines": 200 }` (see §16.3; Open
@@ -300,10 +304,16 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   and `lastWriteAt: number` (bumped on every write; used for conflict check §9.4).
 - `meta.repo` is display-only; **every** path anywhere (files, anchors,
   comments) is repo-relative.
-- `Chapter`: covers a single file (`file: string`, `status: "modified"|"added"|"deleted"`,
-  `hunks: Hunk[]`).
-- `Chapter.attention: LineMark[]` — `LineMark { side: "old"|"new", line:
-  number, mark: "focus"|"glance"|"safe", markSource: "rules"|"llm" }`. Rules
+- `Chapter`: may span multiple files (`files: FileSlice[]`, each
+  `FileSlice { file: string, status: "modified"|"added"|"deleted",
+  hunks: Hunk[] }`, at most one slice per file, in path order). **No legacy
+  migration:** sessions persisted before this schema are treated as absent
+  (`.sky-watch/` is derived cache; losing pre-multi-file sessions/comments
+  is an accepted tradeoff).
+- `Chapter.attention: LineMark[]` — `LineMark { file: string, side:
+  "old"|"new", line: number, mark: "focus"|"glance"|"safe", markSource:
+  "rules"|"llm" }` (`file` required: a multi-file chapter's line numbers are
+  per-slice). Rules
   pass fills marks at session creation; LLM pass may overwrite `markSource:
   "rules"` marks without confirmation (only human data is protected; marks are
   always machine-owned).
@@ -412,8 +422,10 @@ For each comment (new-side anchors only; old-side orphan immediately):
    → score each by (a) `before`/`after` context-line matches (weighted,
    ordered), (b) proximity to the old line; best wins, ties → nearest.
 4. **Diff-hunk visibility check:** verify that the winning new-side line
-   number falls inside a hunk of the rebuilt `chapters` for `anchor.file`.
-   If it does, re-pin the comment (set `line`, `chapterId`, fresh `anchor`
+   number falls inside a hunk of the rebuilt slice for `anchor.file` in the
+   rebuilt `chapters` (a file's hunks may be split across several chapters —
+   use the slice that contains the line). If it does, re-pin the comment
+   (set `line`, `chapterId` of the chapter owning that slice, fresh `anchor`
    with updated `before`/`after`, `orphaned: false`).
 5. If there is no match in the file **or** the matched line now sits outside
    all diff hunks in the rebuilt chapters → mark the comment **orphaned**

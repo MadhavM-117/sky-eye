@@ -1,4 +1,4 @@
-# 005 — M5 Attention marks
+# 010 — M5 Attention marks
 
 **Goal:** rule-based `classify.ts` (safe/glance/focus) runs at session
 creation; line marking UI in the diff view.
@@ -7,6 +7,10 @@ creation; line marking UI in the diff view.
 touched auth line shows focus.
 
 Spec: §16.4 rules, §9.3 `LineMark`/`markSource`.
+
+Multi-file chapters (009): `LineMark` carries `file` — classification runs
+per line within its file slice, and marks render on the right file block of
+a chapter.
 
 Pierre notes (after 008): marks are annotations too — project `LineMark`s
 (focus/glance/safe) onto the same FileDiff annotation framework as comments

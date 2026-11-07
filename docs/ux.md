@@ -123,8 +123,9 @@ read top to bottom; collapsing is an optimization, not the default).
   editable text field — the LLM generates a draft on first expansion, the
   user can rewrite or write it from scratch at any time. A re-run that would
   overwrite a human-edited narrative asks first.
-- Below it: the file path heading, GitHub-style two-column diff (old left, new
-  right), hunks with context lines. Code is syntax-highlighted by the pierre
+- Below it: per-file diff blocks in path order — a chapter may span several
+  files, each block with its own file path heading; GitHub-style two-column
+  diff (old left, new right), hunks with context lines. Code is syntax-highlighted by the pierre
   highlighter (152 languages, plain-text fallback) — file views and diff
   lines use the same highlighter and theme.
 - **Deep links**: hovering a diff line or comment exposes a copy-link
