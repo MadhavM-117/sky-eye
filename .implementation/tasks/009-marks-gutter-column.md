@@ -24,3 +24,8 @@ glyphs are inline-styled (no stylesheet injection). Marks leave the
 
 Server side untouched: `LineMark`, session JSON, export/import, classify /
 custom-classifier protocols all unchanged.
+
+**Status: done** — glyphs stamped into the gutter `[data-column-number]`
+cell via `onPostRender` (verified against the vendored pierre via
+`@pierre/diffs/ssr` preloadFileDiff); spec §18 + ux §3.2 rewritten.
+Follow-up found while verifying: task 013 (custom-name glyph visibility).

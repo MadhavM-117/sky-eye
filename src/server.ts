@@ -128,7 +128,22 @@ export function handle(
       const result = await r.handler({ root, kind, params, url, body });
       if (res.headersSent) return;
       // handlers return a value or { status, value }
-      const s = result as { status?: number; value?: unknown };
+      const s = result as {
+        status?: number;
+        value?: unknown;
+        raw?: string;
+        headers?: Record<string, string>;
+      };
+      // raw body (export route): verbatim bytes + extra headers (e.g. the
+      // Content-Disposition download affordance) instead of re-serialization
+      if (s && typeof s === "object" && "raw" in s && typeof s.raw === "string") {
+        res.writeHead(s.status ?? 200, {
+          "content-type": "application/json",
+          ...s.headers,
+        });
+        res.end(s.raw);
+        return;
+      }
       if (s && typeof s === "object" && "status" in s && "value" in s)
         return sendJson(res, s.status ?? 200, s.value);
       return sendJson(res, 200, result);

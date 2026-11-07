@@ -115,7 +115,7 @@ async function renderFirst() {
       ${refs.defaultBase || refs.branches.length || refs.commits.length ? "" : `<p class="empty">no base candidates found in this repo</p>`}
     </section>
     <section class="sessions">
-      <h2>Sessions</h2>
+      <h2>Sessions <button id="import">import</button><input type="file" id="import-file" accept="application/json" hidden/></h2>
       ${sessions.length === 0 ? `<p class="empty">no sessions yet</p>` : `<ul class="session-list">${sessions.map((s) => `
         <li><a href="#${esc(s.id)}">
           <span class="label">${esc(s.label ?? s.id)}</span>
@@ -142,6 +142,21 @@ async function renderFirst() {
       location.hash = `#${s.id}`;
     } catch (e) {
       alert(e?.error ?? "could not create session");
+    }
+  };
+
+  // import (§14): pick an exported session file → merged into the session
+  // with the same id (or created), then open it
+  const fileInput = document.getElementById("import-file");
+  document.getElementById("import").onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
+    const file = fileInput.files[0];
+    fileInput.value = ""; // re-selecting the same file must re-fire change
+    try {
+      const s = await mut("POST", "/api/import", JSON.parse(await file.text()));
+      location.hash = `#${s.id}`;
+    } catch (e) {
+      alert(e?.error ?? "could not import");
     }
   };
 }
@@ -173,6 +188,8 @@ function renderSession(session, route = null) {
       <span class="meta" id="open-count">${openCount} open comments</span>
       <label class="reviewed-toggle"><input type="checkbox" id="reviewed" ${session.reviewed ? "checked" : ""}/> reviewed</label>
       <a class="explorer-link" href="#${esc(session.id)}/explorer//head">files</a>
+      <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
+      <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export">export</a>
     </header>
     ${bannersHtml(session)}
     <div class="chapters">${chaptersHtml}</div>`);

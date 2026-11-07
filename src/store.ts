@@ -14,6 +14,7 @@ import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
 // re-exported for remap.ts (refresh flows persist through the same path)
 export { writeSession as persistSession };
 import { readFileAt } from "./tree.ts";
+import { remapComments } from "./remap.ts";
 import type { Anchor, Chapter, Comment, Hunk, Session } from "./types.ts";
 
 // traversal-safe session ids (spec §9.2): `..` is a substring by design
@@ -43,6 +44,16 @@ export function loadSession(root: string, id: string): Session {
   if (s.chapters?.some((c) => !Array.isArray((c as Chapter).files)))
     throw new ApiError(404, `stale session schema, create a new review: ${id}`);
   return s;
+}
+
+// export route (§14): the session file byte-for-byte, sent as a download
+export function readSessionRaw(root: string, id: string): string {
+  const file = fileFor(root, sessionId(id));
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    throw new ApiError(404, `unknown session: ${id}`);
+  }
 }
 
 export function writeSession(root: string, session: Session): Session {
@@ -194,6 +205,75 @@ export function patchSession(
     chapter.narrative = n.text ?? "";
     chapter.narrativeEdited = true;
   }
+  return writeSession(root, session);
+}
+
+// ---- import (spec §14) ------------------------------------------------
+
+// shape check for imported JSON (§14): enough to not corrupt the store —
+// full field validation happens at the type level, the merge only reads
+// what it needs. Pre-multi-file chapter schemas are stale cache (task 006).
+function assertSessionShape(s: Session): void {
+  if (!Array.isArray(s.chapters) || !Array.isArray(s.comments))
+    throw new ApiError(400, `not a session file`);
+  if (s.chapters.some((c) => !Array.isArray((c as Chapter).files)))
+    throw new ApiError(404, `stale session schema, create a new review: ${s.id}`);
+}
+
+// Pure merge (fixture-tested, §20): comments matched by id — newer updatedAt
+// wins, ties broken by the older createdAt, nothing ever deleted; narratives
+// matched by chapter.id — imported wins only on a locally unedited chapter
+// (chapters carry no timestamp, so "imported updatedAt newer" has nothing to
+// compare and keep-local is the safe direction); chapters themselves are
+// diff-derived and stay local. digestChanged flags a rebased clone on the
+// other machine (§14) so the caller can run the remap pass.
+export function mergeSessions(
+  local: Session,
+  imported: Session,
+): { session: Session; digestChanged: boolean } {
+  const byId = new Map(local.comments.map((c) => [c.id, c]));
+  for (const c of imported.comments) {
+    const cur = byId.get(c.id);
+    if (!cur) {
+      byId.set(c.id, c); // nothing deleted: imported-only comments are added
+      continue;
+    }
+    if (
+      c.updatedAt > cur.updatedAt ||
+      (c.updatedAt === cur.updatedAt && c.createdAt < cur.createdAt)
+    )
+      byId.set(c.id, c);
+  }
+  // Map iteration keeps local order; imported-only comments append at the end
+  local.comments = [...byId.values()];
+  for (const chapter of local.chapters) {
+    const importedChapter = imported.chapters.find((c) => c.id === chapter.id);
+    if (importedChapter && !chapter.narrativeEdited) {
+      chapter.narrative = importedChapter.narrative;
+      if (importedChapter.narrativeEdited) chapter.narrativeEdited = true;
+    }
+  }
+  return {
+    session: local,
+    digestChanged: imported.diffDigest !== local.diffDigest,
+  };
+}
+
+// import route (§14): validate, merge into the stored session with the same
+// id (create when absent — staleness check then runs on open), remap on
+// digest mismatch, persist.
+export async function importSession(
+  root: string,
+  kind: "git" | "jj",
+  body: unknown,
+): Promise<Session> {
+  const imported = body as Session;
+  sessionId(imported?.id);
+  assertSessionShape(imported);
+  const local = readSession(root, imported.id);
+  if (!local) return writeSession(root, imported);
+  const { session, digestChanged } = mergeSessions(local, imported);
+  if (digestChanged) await remapComments(root, kind, session);
   return writeSession(root, session);
 }
 

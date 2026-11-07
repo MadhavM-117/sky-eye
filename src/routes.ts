@@ -7,10 +7,12 @@ import { listTree, listTreeRecursive, readFileAt } from "./tree.ts";
 import {
   createComment,
   createSession,
+  importSession,
   listSessions,
   loadSession,
   patchComment,
   patchSession,
+  readSessionRaw,
   sessionId,
 } from "./store.ts";
 import { checkStale, refreshSession } from "./remap.ts";
@@ -82,6 +84,19 @@ route("PATCH", "/api/comments/:id", ({ root, kind, params, body }) => {
   const b = body as Record<string, unknown>;
   return patchComment(root, kind, sessionId(b.sessionId as string), params.id, b);
 });
+
+// export (§14): raw session file as a download — verbatim, not re-serialized
+route("GET", "/api/sessions/:id/export", ({ root, params }) => ({
+  raw: readSessionRaw(root, sessionId(params.id)),
+  headers: {
+    "content-disposition": `attachment; filename="${params.id}.json"`,
+  },
+}));
+
+// import (§14): body IS the session JSON; merge (updatedAt wins) into the
+// session with the same id, or create it
+route("POST", "/api/import", async ({ root, kind, body }) =>
+  importSession(root, kind, body));
 
 // tree/file path containment (spec §11)
 export function validateDir(p: string): string {

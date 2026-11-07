@@ -456,14 +456,22 @@ during step 4. This is the D§11 risk, accepted.
   - Comments matched by `id`; per comment, **newer `updatedAt` wins** (ties
     broken by `createdAt`); nothing is ever deleted.
   - Narratives: matched by `chapter.id`; imported `narrative` wins only if
-    locally `!narrativeEdited` or imported `updatedAt` is newer — flag
-    `narrativeEdited` travels in the export and is respected.
+    locally `!narrativeEdited` (a locally edited narrative is never
+    overwritten — chapters carry no timestamp, so there is nothing newer to
+    compare; the `narrativeEdited` flag travels in the export and is
+    respected). Chapters themselves are diff-derived and stay local.
+  - Session-level fields (label, reviewed) are not merged — only comments
+    and narratives are user state the spec merges (§14 scope).
   - If the imported session's `diffDigest` differs from the local diff digest
     for that session (other machine had a rebased clone), run the remap pass
     (§13.3) after merging and surface the stale banner rather than silently
     mixing review state (D§3 row 5, D§6).
-- Importing a session id that doesn't exist locally → validate, create it,
-  and run staleness check on open.
+- Importing a session id that doesn't exist locally → validate, create it
+  (verbatim), and run staleness check on open.
+- Export/import UI: the session header carries an `export` link (the
+  route's `Content-Disposition` triggers the download); the first screen
+  carries an `import` button that POSTs the picked file's JSON and opens
+  the merged session (U§3.1, designed at M6 per U§4).
 
 ## 15. Identity (`identity.ts`, D§7)
 

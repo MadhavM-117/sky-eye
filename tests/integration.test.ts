@@ -604,3 +604,61 @@ test("integration: broken classifier → fallback keeps rules; fallback:false cl
     assert.equal(log.failed, true);
   });
 });
+
+test("export/import: download round-trip, merge through the server (spec §14)", async () => {
+  await withServer(async (port, repo) => {
+    portOf = port;
+    const refs = await get("/api/refs");
+    const session = (
+      await mut("POST", "/api/sessions", {
+        base: refs.body.defaultBase.id,
+        head: refs.body.head.id,
+      })
+    ).body;
+    const comment = (
+      await mut("POST", "/api/comments", {
+        sessionId: session.id,
+        chapterId: session.chapters[0].id,
+        file: session.chapters[0].files[0].file,
+        side: "new",
+        line: session.chapters[0].files[0].hunks[0].lines.find((l: any) => l.type === "add").newLine,
+        text: "original wording",
+      })
+    ).body;
+
+    // export: verbatim download with attachment disposition
+    const dl = await fetch(`http://localhost:${portOf}/api/sessions/${encodeURIComponent(session.id)}/export`);
+    assert.equal(dl.status, 200);
+    assert.match(dl.headers.get("content-disposition")!, /attachment; filename=/);
+    const exported = JSON.parse(await dl.text());
+    assert.equal(exported.comments.length, 1);
+    assert.equal(exported.comments[0].text, "original wording");
+
+    // import: the "other machine" edited the comment (newer updatedAt) → wins
+    const remote = structuredClone(exported);
+    remote.comments[0].text = "reworded on the other machine";
+    remote.comments[0].updatedAt = comment.updatedAt + 1000;
+    const merged = await mut("POST", "/api/import", remote);
+    assert.equal(merged.status, 200);
+    assert.equal(merged.body.comments[0].text, "reworded on the other machine");
+
+    // re-import the stale export: the local (newer) edit survives
+    const kept = await mut("POST", "/api/import", exported);
+    assert.equal(kept.body.comments[0].text, "reworded on the other machine");
+
+    // digest mismatch (rebased clone abroad): remap pass runs — the comment
+    // re-anchors against the head file (text still matches), not orphaned
+    const rebased = structuredClone(exported);
+    rebased.diffDigest = "different";
+    const remapped = await mut("POST", "/api/import", rebased);
+    assert.equal(remapped.body.comments[0].orphaned, undefined);
+    assert.ok(remapped.body.comments[0].anchor.text.length > 0);
+
+    // invalid import bodies are rejected
+    assert.equal((await mut("POST", "/api/import", { id: "bad" })).status, 400);
+    assert.equal(
+      (await mut("POST", "/api/import", { id: "aaa..bbb", comments: [] })).status,
+      400,
+    );
+  });
+});
