@@ -16,6 +16,7 @@ import {
   sessionId,
 } from "./store.ts";
 import { checkStale, refreshSession } from "./remap.ts";
+import { rerunChapter } from "./narrate.ts";
 
 route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
 
@@ -83,6 +84,14 @@ route("POST", "/api/comments", async ({ root, kind, body }) => {
 route("PATCH", "/api/comments/:id", ({ root, kind, params, body }) => {
   const b = body as Record<string, unknown>;
   return patchComment(root, kind, sessionId(b.sessionId as string), params.id, b);
+});
+
+// narrative + LLM marks for one chapter (§16.2): lazy first generation and
+// re-run share the endpoint; 409 needsConfirm guards edited narratives (§10)
+route("POST", "/api/sessions/:id/rerun", async ({ root, kind, params, body }) => {
+  const b = body as { chapterId?: string; confirm?: boolean };
+  if (!b.chapterId) throw new ApiError(400, "chapterId is required");
+  return rerunChapter(root, kind, loadSession(root, sessionId(params.id)), b.chapterId, b.confirm === true);
 });
 
 // export (§14): raw session file as a download — verbatim, not re-serialized

@@ -123,6 +123,12 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
   padding: 6px; resize: vertical; margin-bottom: 10px;
 }
 .narrative:focus { border-style: solid; outline: none; }
+.narrative.narrating { color: var(--muted); font-style: italic; }
+button.rerun {
+  margin-left: auto; background: none; border: none;
+  color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 6px;
+}
+button.rerun:hover { color: var(--fg); }
 
 /* Diff/tree internals are styled by @pierre/diffs + @pierre/theme inside
    their own containers/shadow roots; --add-bg/--del-bg etc. remain for the

@@ -263,18 +263,26 @@ How a chapter summary is produced:
     "defaults": { "apiKey": "…", "model": "…", "baseUrl": "…" },
     "tasks": {
       "narrate":  { "model": "…", "apiKey": "…" },
-      "classify": { "model": "…" }
+      "classify": { "provider": "anthropic", "model": "…" }
     }
   }
   ```
 
   e.g. a cheap fast model for `classify`, a stronger one for `narrate`.
+  `provider` selects the adapter (§22.2): `"openai"` (default —
+  OpenAI-compatible chat completions) or `"anthropic"` (native
+  `/v1/messages`); setting `command` instead makes the task use a **custom
+  adapter**: an executable reading `{ "protocol": 1, "task", "model",
+  "system", "prompt" }` JSON on stdin and writing `{ "text": "…" }` on
+  stdout (same spirit as the custom classifier hook). Requests are blocking
+  in v1; streaming deferred.
   Missing file or missing key for a task → that task is skipped (its output
   degrades to rules only / "unanalyzed"); it never blocks the session.
 - **Shared call with classification**: the LLM refinement in `classify.ts`
   (feature 3) shares the narrate request by default — one response carries
   both the paragraph and per-line marks — but only while both tasks resolve
-  to the *same* provider/model; different configs mean two calls.
+  to the *same* adapter (same provider/baseUrl/model, or the same custom
+  command); different configs mean two calls.
 
 ## 6b. File explorer and syntax highlighting
 

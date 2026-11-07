@@ -53,6 +53,39 @@ export interface ClassifyRules {
   focusPaths?: string[];
 }
 
+// LLM task config (spec §16.1, §22.2): `defaults` in .sky-watch/config.json
+// plus per-task overrides for narrate/classify. `command` switches to the
+// custom exec adapter; otherwise `provider` picks openai (default) or
+// anthropic. A task without model/command resolves to undefined = skipped.
+export interface LlmTaskConfig {
+  provider?: "openai" | "anthropic";
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  command?: string; // custom adapter: JSON on stdin, { text } on stdout
+  timeoutMs?: number; // default 120_000 (narration can be slow on local models)
+}
+
+export interface LlmConfig {
+  defaults?: LlmTaskConfig;
+  tasks?: { narrate?: LlmTaskConfig; classify?: LlmTaskConfig };
+}
+
+// one LLM call; adapters return the assistant text (parsing is the caller's
+// job — narrate.ts knows the response shapes)
+export interface LlmRequest {
+  task: "narrate" | "classify";
+  model?: string;
+  system: string;
+  prompt: string;
+}
+
+export interface LlmAdapter {
+  // identity for the shared-call check (§16.3): equal ids → one request
+  id: string;
+  call(req: LlmRequest): Promise<string>;
+}
+
 // one file's part of a chapter (spec §8: a chapter may span files, one
 // contiguous slice per file, in path order)
 export interface FileSlice {

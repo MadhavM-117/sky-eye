@@ -263,6 +263,7 @@ function chapterHtml(session, c, index) {
       <button class="collapse" data-i="${index}">▾</button>
       <span class="chapter-title">chapter ${index + 1}</span>
       <span class="stats">${del || !add ? `<span class="del">−${del}</span> ` : ``}<span class="add">+${add}</span></span>
+      <button class="rerun" data-i="${index}" title="re-generate narrative + marks">↻</button>
     </h2>
     <div class="chapter-body">
       <textarea class="narrative" data-chapter="${c.id}" rows="2"
@@ -372,11 +373,12 @@ function wireSession(session, route = null) {
     return row;
   };
 
-  // one diff block per file slice inside a chapter (task 009)
-  document.querySelectorAll(".diff-holder").forEach((holder) => {
-    const chapter = current.chapters.find((c) => c.id === holder.dataset.chapter);
-    const file = holder.dataset.file;
-    const slice = chapter?.files.find((s) => s.file === file);
+  // one diff block per file slice inside a chapter (task 009); extracted so
+  // restampMarks can rebuild a chapter's diffs after a re-run (M7) — marks
+  // are captured at createFileDiff time
+  const buildDiff = (holder, chapter, file) => {
+    const slice = chapter.files.find((s) => s.file === file);
+    if (!slice) return;
     const diff = createFileDiff(
       { path: slice.file, status: slice.status },
       slice.hunks,
@@ -431,6 +433,67 @@ function wireSession(session, route = null) {
       diffs.set(`${chapter.id}\u0000${file}`, diff);
       holder.appendChild(diff.el);
     } else holder.innerHTML = `<div class="banner">binary file — no textual diff</div>`;
+  };
+
+  document.querySelectorAll(".diff-holder").forEach((holder) => {
+    const chapter = current.chapters.find((c) => c.id === holder.dataset.chapter);
+    const file = holder.dataset.file;
+    if (chapter) buildDiff(holder, chapter, file);
+  });
+
+  const restampMarks = (chapter) => {
+    for (const s of chapter.files) {
+      const key = `${chapter.id}\u0000${s.file}`;
+      const inst = diffs.get(key);
+      if (!inst) continue;
+      const holder = inst.el.parentElement;
+      inst.el.remove();
+      diffs.delete(key);
+      if (holder) buildDiff(holder, chapter, s.file);
+    }
+  };
+
+  // M7 (§16.2): lazy narrative generation — the server generates on first
+  // request, so fire one rerun per still-unanalyzed chapter on session open
+  // (chapters render expanded, so "first expansion" is here). Sequential:
+  // each response refreshes `current`, keeping lastWriteAt fresh for any
+  // concurrent narrative edit PATCH. 409 needsConfirm (edited narrative)
+  // asks before overwriting (§10).
+  const narrating = new Set();
+  const rerunChapterUi = async (chapterId, confirmed = false) => {
+    const chapter = current.chapters.find((c) => c.id === chapterId);
+    if (!chapter || narrating.has(chapterId)) return;
+    narrating.add(chapterId);
+    const ta = document.querySelector(`textarea.narrative[data-chapter="${chapterId}"]`);
+    ta?.classList.add("narrating");
+    try {
+      current = await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/rerun`, {
+        chapterId,
+        confirm: confirmed || undefined,
+      });
+      const updated = current.chapters.find((c) => c.id === chapterId);
+      if (updated) {
+        if (ta) ta.value = updated.narrative;
+        ta?.classList.remove("narrating");
+        restampMarks(updated);
+      }
+    } catch (e) {
+      ta?.classList.remove("narrating");
+      if (e?.needsConfirm) {
+        if (confirm("re-run overwrites your edited narrative — regenerate?"))
+          await rerunChapterUi(chapterId, true);
+      } else alert(e?.error ?? "could not generate narrative");
+    } finally {
+      narrating.delete(chapterId);
+    }
+  };
+  for (const c of current.chapters.filter((c) => c.narrative === "unanalyzed"))
+    rerunChapterUi(c.id);
+  document.querySelectorAll("button.rerun").forEach((btn) => {
+    btn.onclick = () => {
+      const chapter = current.chapters[Number(btn.dataset.i)];
+      if (chapter) rerunChapterUi(chapter.id);
+    };
   });
 
   // deep links (spec §17): scroll to + flash the target; retry because lazy

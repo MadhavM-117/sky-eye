@@ -662,3 +662,55 @@ test("export/import: download round-trip, merge through the server (spec §14)",
     );
   });
 });
+
+test("rerun: no config → skip; custom adapter → narrative + confirm guard (spec §16.2)", async () => {
+  await withServer(async (_port, repo) => {
+    const session = await openSession();
+    const chapterId = session.chapters[0].id;
+
+    // no LLM config → rules-only world, rerun is a no-op that never blocks
+    const skipped = await mut("POST", `/api/sessions/${session.id}/rerun`, { chapterId });
+    assert.equal(skipped.status, 200);
+    assert.equal(skipped.body.chapters[0].narrative, "unanalyzed");
+
+    // custom adapter (§22.2): the whole server path fires without network —
+    // the script echoes a fixed narrative and re-marks nothing
+    const dir = path.join(repo, ".sky-watch");
+    fs.mkdirSync(dir, { recursive: true });
+    const script = path.join(dir, "adapter.sh");
+    fs.writeFileSync(
+      script,
+      `#!/bin/sh\nnode -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({text:"generated narrative"}))})'`,
+    );
+    fs.chmodSync(script, 0o755);
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ tasks: { narrate: { command: script } } }),
+    );
+
+    const generated = await mut("POST", `/api/sessions/${session.id}/rerun`, { chapterId });
+    assert.equal(generated.status, 200);
+    assert.equal(generated.body.chapters[0].narrative, "generated narrative");
+
+    // unknown chapter → 404
+    assert.equal(
+      (await mut("POST", `/api/sessions/${session.id}/rerun`, { chapterId: "nope" })).status,
+      404,
+    );
+
+    // edited narrative → 409 needsConfirm; confirm regenerates (§10)
+    const edited = await mut("PATCH", `/api/sessions/${session.id}`, {
+      lastWriteAt: generated.body.lastWriteAt,
+      narrative: { chapterId, text: "human edit" },
+    });
+    const guarded = await mut("POST", `/api/sessions/${session.id}/rerun`, { chapterId });
+    assert.equal(guarded.status, 409);
+    assert.equal(guarded.body.needsConfirm, true);
+    const confirmed = await mut("POST", `/api/sessions/${session.id}/rerun`, {
+      chapterId,
+      confirm: true,
+    });
+    assert.equal(confirmed.body.chapters[0].narrative, "generated narrative");
+    assert.ok(edited.body.chapters[0].narrativeEdited);
+  });
+});

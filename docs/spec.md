@@ -488,7 +488,8 @@ during step 4. This is the D§11 risk, accepted.
 
 `.sky-watch/config.json` (inside the ignored folder — keys never land in
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
-`narrate` / `classify` (`apiKey`, `model`, `baseUrl`); plus `classifier`
+`narrate` / `classify` (`apiKey`, `model`, `baseUrl`, `provider`, plus
+`command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
 (custom classifier command: `command`, `timeoutMs` (default 30000),
 `fallback` (default true), `debug` (default false) — §16.5) and
 `classifyRules` (`safePaths` / `focusPaths` globs extending the built-in
@@ -500,18 +501,21 @@ missing key for a task → **task skipped, never blocks the session**
 
 - Lazily on first chapter expansion — `POST .../rerun { chapterId }` from
   the frontend when `narrative` is empty. Never eager at session creation.
-- Prompt input: the chapter's unified diff text + ~10 lines of new-side
-  context around each hunk + file paths + the list of other chapter titles.
+- Prompt input: the chapter's diff across **all** its file slices (§8) +
+  ~10 lines of new-side context around each hunk + file paths + the list of
+  other chapter titles.
 - Output: short paragraph, stored in `Chapter.narrative`.
 - `narrativeEdited` guard: re-run over an edited narrative requires
   confirmation (409 flow, §10).
 
 ### 16.3 Shared call with classification
 
-When `narrate` and `classify` resolve to the same provider/model (same
-`baseUrl`+`model` after config merge), one request carries both prompts and
-expects JSON back: `{ "narrative": "...", "marks": [{ "side", "line",
-"mark" }] }`. Different configs → two calls. LLM marks overwrite only
+When `narrate` and `classify` resolve to the same adapter (same
+`provider`+`baseUrl`+`model`, or the same custom `command`, after config
+merge), one request carries both prompts and
+expects JSON back: `{ "narrative": "...", "marks": [{ "file", "side",
+"line", "mark" }] }` — `file` because chapters span files since the
+multi-file model (§8). Different configs → two calls. LLM marks overwrite only
 `markSource: "rules"` marks (custom-classifier marks are equally protected).
 Malformed LLM output → discard LLM part, keep
 rules result (degrade, don't fail).
@@ -700,11 +704,14 @@ milestone starts:
    jj 0.46): `jj diff --git` emits `@@ ... @@ <funcname>` just like git
    (e.g. `@@ -1,9 +1,10 @@ fn a() {`), so the chunker's function-boundary
    rule (§8.2) works in jj mode with no fallback needed.
-2. **LLM protocol confirmation.** OpenAI-compatible chat completions is
-   assumed (fits `baseUrl`/`model`/`apiKey`). Confirm which providers the
-   user actually wants; Anthropic-native APIs differ enough to matter.
-   Also: blocking request vs streaming for narrative generation — v1
-   assumes blocking (one paragraph, seconds), revisit if slow models annoy.
+2. **LLM protocol confirmation.** RESOLVED (user decision at M7, 2025-06):
+   three adapters ship — OpenAI-compatible chat completions (default),
+   native Anthropic `/v1/messages` (selected via `provider: "anthropic"`),
+   and a custom exec adapter (`command` in the task config: JSON
+   `{ protocol, task, model, system, prompt }` on stdin, `{ "text" }` on
+   stdout — same spirit as the classifier hook §16.5). Requests are
+   **blocking** in v1 (one paragraph, seconds); streaming is deferred to a
+   future task — revisit if slow models annoy.
 3. **Chapter-id instability on every diff change.** Any diff change (not
    just rebases — even new commits on top) rebuilds chapters and thus
    chapter ids. Comments survive via content anchors, but deep links and
