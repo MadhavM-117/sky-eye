@@ -10,7 +10,8 @@ below is the current plan.
 - `004` M3 Rebase survival — staleness (jj digest + git `headRef`), refresh, remap (with hunk visibility check), orphan triage (re-pin via pierre selection API) — **done** (`src/remap.ts`; jj refresh in place, git supersede flow, orphan triage banner; spec §22.1 resolved: jj 0.46 emits funcname context)
 - `005` M4 Chunker tuning — function boundaries, keep-together, size config; decide large-diff virtualization (pierre ships the component) — **done** (funcname from hunk header, keep-together up to maxLines, distance fallback; §22.5 resolved: chaptering is the virtualization)
 - `006` Multi-file chapters — chunker drops the file-boundary rule; `Chapter.files[]` slices, `LineMark.file`, no legacy migration (decided); foundational — lands before the pending milestones — **done** (chunker/store/remap/types + per-file diff blocks; verified live in tmp/demo)
-- `007` M5 Attention marks — rule-based classify + line marking UI (marks render via pierre annotations); `LineMark.file` from 006
-- `008` M6 Export/import — download, merge-on-import (`updatedAt` wins), re-verification (no pierre surface)
-- `009` M7 LLM narratives — llm.ts, narrate, shared classification call (no pierre surface); prompt sees all of a chapter's file slices
-- `010` Parser guard — pass --no-mnemonic-prefix in buildDiff git args (user config breaks parseUnifiedDiff)
+- `007` M5 Attention marks — rule-based classify + line marking UI (marks render via pierre annotations); `LineMark.file` from 006 — **done** (`src/classify.ts` rules pass at every chapter rebuild; marks projected through `commentAnnotations` alongside comments)
+- `008` Custom classifier hook — exec protocol (stdin/stdout JSON), custom marks override rules per line, `markSource: "custom"`, fallback knob, classifier.log + debug-classify CLI; extensible mark names + classifyRules globs
+- `009` M6 Export/import — download, merge-on-import (`updatedAt` wins), re-verification (no pierre surface)
+- `010` M7 LLM narratives — llm.ts, narrate, shared classification call (no pierre surface); prompt sees all of a chapter's file slices
+- `011` Parser guard — pass --no-mnemonic-prefix in buildDiff git args (user config breaks parseUnifiedDiff)

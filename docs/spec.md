@@ -312,11 +312,14 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   is an accepted tradeoff).
 - `Chapter.attention: LineMark[]` — `LineMark { file: string, side:
   "old"|"new", line: number, mark: "focus"|"glance"|"safe", markSource:
-  "rules"|"llm" }` (`file` required: a multi-file chapter's line numbers are
-  per-slice). Rules
-  pass fills marks at session creation; LLM pass may overwrite `markSource:
-  "rules"` marks without confirmation (only human data is protected; marks are
-  always machine-owned).
+  "rules"|"llm"|"custom" }` (`file` required: a multi-file chapter's line
+  numbers are per-slice; `mark` uses the canonical vocabulary but is
+  extensible — custom classifiers (§16.5) may emit other names, rendered as
+  a neutral chip). Rules
+  pass fills marks at session creation; the custom classifier (§16.5)
+  overrides marks per line with `markSource: "custom"`; LLM pass may
+  overwrite `markSource: "rules"` marks without confirmation (only human
+  data is protected; marks are always machine-owned).
 - `Comment`: includes both `createdAt: number` and `updatedAt: number` (set to
   `createdAt` on creation and bumped on every `PATCH`), plus `orphaned?: boolean`.
 
@@ -476,7 +479,11 @@ during step 4. This is the D§11 risk, accepted.
 
 `.sky-watch/config.json` (inside the ignored folder — keys never land in
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
-`narrate` / `classify` (`apiKey`, `model`, `baseUrl`). Missing file or
+`narrate` / `classify` (`apiKey`, `model`, `baseUrl`); plus `classifier`
+(custom classifier command: `command`, `timeoutMs` (default 30000),
+`fallback` (default true), `debug` (default false) — §16.5) and
+`classifyRules` (`safePaths` / `focusPaths` globs extending the built-in
+buckets — §16.4). Missing file or
 missing key for a task → **task skipped, never blocks the session**
 (narrative = "unanalyzed", marks = rules only).
 
@@ -496,7 +503,8 @@ When `narrate` and `classify` resolve to the same provider/model (same
 `baseUrl`+`model` after config merge), one request carries both prompts and
 expects JSON back: `{ "narrative": "...", "marks": [{ "side", "line",
 "mark" }] }`. Different configs → two calls. LLM marks overwrite only
-`markSource: "rules"` marks. Malformed LLM output → discard LLM part, keep
+`markSource: "rules"` marks (custom-classifier marks are equally protected).
+Malformed LLM output → discard LLM part, keep
 rules result (degrade, don't fail).
 
 ### 16.4 Rule pass (`classify.ts`) — v1 rules
@@ -510,6 +518,26 @@ Runs at session creation, no LLM needed:
   `*token*`, `*secret*`) and lines touching `await`/`async`, `try`/`catch`/
   `throw`, crypto/password/permission/SQL keywords.
 - **everything else:** glance.
+
+The built-in buckets are user-extensible via `classifyRules` (`safePaths` /
+`focusPaths` globs, §16.1); a configured custom classifier (§16.5) overrides
+rule marks per line.
+
+### 16.5 Custom classifier (exec protocol)
+
+When `classifier.command` is set, sky-eye spawns it at every chapter
+rebuild (creation, refresh, supersede) — the same moments as the rule pass.
+Request/response JSON on stdin/stdout (`protocol: 1`): chapters with their
+changed lines in; sparse `marks` out, overriding rules marks per
+`(file, side, line)` with `markSource: "custom"`; unmarked lines keep rules
+marks. Invalid entries are dropped; a failed run (non-zero exit, timeout,
+malformed output) falls back to rules marks unless
+`classifier.fallback: false`, in which case marks are cleared. Every run
+appends to `.sky-watch/classifier.log` (full transcript with
+`classifier.debug`); `sky-eye debug-classify <sessionId>` replays the
+classifier against a stored session and prints the transcript. Future
+built-in classifiers (LLM-backed, decision models) will speak the same
+protocol; none ship in v1.
 
 ## 17. Deep links (D§4, U§3.2)
 
@@ -628,6 +656,12 @@ a real 500-line diff reads sensibly.
 **M5 — Rule-based attention marks.** Deliver: `classify.ts` rules + line
 marking UI. *Accept:* test files/lockfiles show safe; a touched auth line
 shows focus.
+
+**M5.1 — Custom classifier hook.** Deliver: config block, exec protocol,
+merge/fallback semantics, `classifier.log`, `debug-classify`. *Accept:*
+demo repo with a scripted classifier → session creation shows
+`markSource: "custom"` marks; broken classifier → rules fallback (or
+cleared with `fallback:false`); `debug-classify` prints the transcript.
 
 **M6 — Export/import.** Deliver: export download, import + merge (`updatedAt`
 wins per comment) + digest re-verification + remap-on-mismatch. *Accept:*

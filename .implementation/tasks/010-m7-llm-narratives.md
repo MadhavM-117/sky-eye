@@ -1,4 +1,4 @@
-# 009 — M7 LLM narratives + refined classification
+# 010 — M7 LLM narratives + refined classification
 
 **Goal:** `llm.ts` (OpenAI-compatible fetch client) + `narrate.ts` with lazy
 firing on first chapter expansion, caching, editable narratives with

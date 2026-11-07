@@ -1,4 +1,4 @@
-# 010 — Parser guard against `diff.mnemonicPrefix`
+# 011 — Parser guard against `diff.mnemonicPrefix`
 
 **Goal:** `git diff` with a user's `diff.mnemonicPrefix=true` emits
 `i/`/`w/` path prefixes and `parseUnifiedDiff` silently returns 0 files

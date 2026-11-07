@@ -254,7 +254,8 @@ How a chapter summary is produced:
   writable over "unanalyzed" too.
 - **Per-task model/key config**: a config file at `.sky-watch/config.json`
   (inside the ignored state folder, so keys never land in git/jj/docker).
-  Tasks (v1: `narrate`, `classify`; later tasks join the same scheme) fall
+  Tasks (v1: `narrate`, `classify`; the custom classifier command (spec
+  §16.5) and later tasks join the same scheme) fall
   back to shared defaults, per-task entries override:
 
   ```jsonc
