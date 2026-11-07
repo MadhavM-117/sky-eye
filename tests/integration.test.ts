@@ -557,20 +557,24 @@ test("integration: custom classifier overrides rules marks, logged", async () =>
     assert.ok(attention.length > 0);
     assert.ok(attention.every((m: any) => m.markSource === "custom" && m.mark === "custom-hot"));
 
-    // log entry written, rotated on the next run
-    const log1 = JSON.parse(fs.readFileSync(path.join(repo, ".sky-watch", "classifier.log"), "utf8"));
+    // log entry written to .sky-watch/logs/ (task 016), one run per file —
+    // overwritten, so the next run keeps only the most recent log
+    const logPath = path.join(repo, ".sky-watch", "logs", "classifier.log");
+    const log1 = JSON.parse(fs.readFileSync(logPath, "utf8"));
     assert.equal(log1.failed, false);
     assert.equal(log1.marksOut, attention.length);
     assert.ok(log1.request); // debug: true → full transcript
 
-    // second rebuild (new commit → new session) rotates the log
+    // second rebuild (new commit → new session) overwrites the log
     git(repo, "commit", "--allow-empty", "-m", "rotate log");
     const refs2 = await get("/api/refs");
     await mut("POST", "/api/sessions", {
       base: refs.body.defaultBase.id,
       head: refs2.body.head.id,
     });
-    assert.ok(fs.existsSync(path.join(repo, ".sky-watch", "classifier.log.1")));
+    const log2 = JSON.parse(fs.readFileSync(logPath, "utf8"));
+    assert.notEqual(log2.request, log1.request); // different base/head → different transcript
+    assert.ok(!fs.existsSync(path.join(repo, ".sky-watch", "classifier.log.1")));
   });
 });
 
@@ -601,7 +605,7 @@ test("integration: broken classifier → fallback keeps rules; fallback:false cl
       head: refs2.body.head.id,
     });
     assert.equal(attentionOf(cleared.body).length, 0);
-    const log = JSON.parse(fs.readFileSync(path.join(repo, ".sky-watch", "classifier.log"), "utf8"));
+    const log = JSON.parse(fs.readFileSync(path.join(repo, ".sky-watch", "logs", "classifier.log"), "utf8"));
     assert.equal(log.failed, true);
   });
 });

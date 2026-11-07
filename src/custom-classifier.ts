@@ -238,14 +238,13 @@ function shRun(
   });
 }
 
-// One-run rotation (user decision, plan 008): `classifier.log.1` ← rename the
-// previous log, then write fresh — two files total, always bounded.
+// All generated logs live in `.sky-watch/logs/` (task 016), and only the
+// most recent run is kept: each run overwrites the file (no rotation).
 function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): void {
   try {
-    const dir = path.join(root, ".sky-watch");
+    const dir = path.join(root, ".sky-watch", "logs");
     fs.mkdirSync(dir, { recursive: true });
     const log = path.join(dir, "classifier.log");
-    if (fs.existsSync(log)) fs.renameSync(log, log + ".1");
     const tail = (s: string, n: number) => (s.length > n ? "…" + s.slice(-n) : s);
     fs.writeFileSync(
       log,
