@@ -533,8 +533,9 @@ changed lines in; sparse `marks` out, overriding rules marks per
 marks. Invalid entries are dropped; a failed run (non-zero exit, timeout,
 malformed output) falls back to rules marks unless
 `classifier.fallback: false`, in which case marks are cleared. Every run
-appends to `.sky-watch/classifier.log` (full transcript with
-`classifier.debug`); `sky-eye debug-classify <sessionId>` replays the
+logged to `.sky-watch/classifier.log`, rotated per run (`classifier.log.1`
+keeps the previous run; full transcript with `classifier.debug`);
+`sky-eye debug-classify <sessionId>` replays the
 classifier against a stored session and prints the transcript. Future
 built-in classifiers (LLM-backed, decision models) will speak the same
 protocol; none ship in v1.
