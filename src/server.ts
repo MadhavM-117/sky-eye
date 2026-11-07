@@ -77,6 +77,9 @@ async function serveStatic(res: http.ServerResponse, pathname: string) {
   const ext = path.extname(full);
   res.writeHead(200, {
     "content-type": MIME[ext] ?? "application/octet-stream",
+    // heuristic caching served a stale app.js bundle after a rebuild —
+    // no-cache revalidates every load so the UI is never older than the repo
+    "cache-control": "no-cache",
   });
   res.end(data);
 }
