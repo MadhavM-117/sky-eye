@@ -5,8 +5,8 @@ taking a JSON request on stdin and returning marks as JSON on stdout. It
 *becomes* the classifier at every chapter rebuild (creation, refresh,
 supersede); the built-in rule pass stays as the base/fallback layer. Marks
 are customizable: the mark vocabulary is extensible (unknown names render
-as a neutral chip) and `classifyRules` adds `safePaths`/`focusPaths` globs
-to the built-in buckets.
+as a neutral glyph; task 009 moved marks to the gutter column) and
+`classifyRules` adds `safePaths`/`focusPaths` globs to the built-in buckets.
 
 **Deliverable/acceptance** (spec §21 M5.1): a scripted classifier in
 `tmp/demo` → session creation shows `markSource: "custom"` marks; broken
@@ -20,7 +20,7 @@ Spec: §16.5 (protocol), §16.1 (config keys), §16.4 (rules extension),
 
 Notes:
 - Merge semantics: sparse custom marks override rules marks per
-  `(file, side, line)`; unmarked lines keep rules marks. LLM pass (010)
+  `(file, side, line)`; unmarked lines keep rules marks. LLM pass (011)
   overwrites only `markSource: "rules"` marks — custom marks are protected.
 - Future built-in classifiers (LLM-backed, custom decision models such as
   Jev) speak the same protocol — separate task, out of scope for v1.

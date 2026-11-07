@@ -16,5 +16,11 @@ Pierre notes (after 002): marks are annotations too — project `LineMark`s
 (focus/glance/safe) onto the same FileDiff annotation framework as comments
 (003), styled with a small mark glyph/background. Colors come from sky-eye's
 CSS custom properties (process.md foundations) layered over the pierre theme,
-not from editing pierre internals. LLM marks (009) reuse this unchanged —
+not from editing pierre internals. LLM marks (011) reuse this unchanged —
 only the server's `markSource` differs.
+
+**Update (task 009):** marks no longer ride the annotation projection —
+they render as glyphs in a dedicated gutter column beside the line numbers
+(`onPostRender` decoration pass), since inline rows made mark-dense MRs
+unreadable. See `009-marks-gutter-column.md` and
+tmp/plans/marks-column/plan.md.

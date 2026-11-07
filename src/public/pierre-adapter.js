@@ -70,6 +70,8 @@ export function fileDiffMetadata(file, hunks) {
 // Annotation hooks: renderAnnotation option + render({lineAnnotations});
 // re-project the full annotation set on any state change (never mutate
 // pierre state) — updateAnnotations re-renders annotation rows only.
+// `marks` (M5) render as gutter glyphs via the onPostRender decoration pass
+// below — not annotation rows — so a mark adds no vertical space.
 // `file` is {path, status}; app.js passes {path: chapter.file, status: chapter.status}.
 export function createFileDiff(file, hunks, {
   onSelectionChange,
@@ -78,6 +80,7 @@ export function createFileDiff(file, hunks, {
   onGutterUtilityClick,
   renderAnnotation,
   annotations = [],
+  marks = [],
 } = {}) {
   const meta = fileDiffMetadata(file, hunks);
   if (!meta) return null;
@@ -101,6 +104,11 @@ export function createFileDiff(file, hunks, {
     enableGutterUtility: !!onGutterUtilityClick,
     onGutterUtilityClick: onGutterUtilityClick && ((range) => onGutterUtilityClick(range)),
     renderAnnotation: renderAnnotation && ((annotation) => renderAnnotation(annotation)),
+    // marks gutter column (task 009): fires on every render — mount, update,
+    // and virtualized scroll repaints — so glyphs survive windowed re-renders
+    onPostRender: (container, _instance, phase) => {
+      if (phase !== "unmount") stampMarks(container.shadowRoot, marks);
+    },
   });
   // containerWrapper (not fileContainer): FileDiff then creates its own
   // <diffs-container> custom element, whose shadow root carries the core
@@ -115,10 +123,11 @@ export function updateAnnotations(diff, annotations) {
   diff.fileDiff.render({ lineAnnotations: annotations });
 }
 
-// sky-eye comments (+ optional open composer, + attention marks, M5) →
-// side-aware DiffLineAnnotations: all entries on one line group into a
-// single annotation row. Pure projection — fixture-tested.
-export function commentAnnotations(comments, composer = null, marks = []) {
+// sky-eye comments (+ optional open composer) → side-aware
+// DiffLineAnnotations: all entries on one line group into a single annotation
+// row. Attention marks do NOT ride this projection (gutter column, task 009).
+// Pure projection — fixture-tested.
+export function commentAnnotations(comments, composer = null) {
   const byLine = new Map();
   const push = (skyEyeSide, line, entry) => {
     const key = `${skyEyeSide}:${line}`;
@@ -126,23 +135,66 @@ export function commentAnnotations(comments, composer = null, marks = []) {
       byLine.set(key, {
         side: skyEyeSide === "old" ? "deletions" : "additions",
         lineNumber: line,
-        metadata: { comments: [], composer: null, marks: [] },
+        metadata: { comments: [], composer: null },
       });
     byLine.get(key).metadata.comments.push(entry);
   };
   for (const c of comments) push(c.side, c.line, c);
   if (composer) push(composer.side, composer.line, { composer: true });
-  for (const m of marks) {
-    const key = `${m.side}:${m.line}`;
-    if (!byLine.has(key))
-      byLine.set(key, {
-        side: m.side === "old" ? "deletions" : "additions",
-        lineNumber: m.line,
-        metadata: { comments: [], composer: null, marks: [] },
-      });
-    byLine.get(key).metadata.marks.push(m);
-  }
   return [...byLine.values()];
+}
+
+// ---- attention marks: gutter glyphs (task 009) ---------------------------
+
+const GLYPHS = { focus: "◆", glance: "▲", safe: "●" };
+const COLORS = {
+  focus: "var(--mark-focus)",
+  glance: "var(--mark-glance)",
+  safe: "var(--mark-safe)",
+};
+
+// Pure part of the gutter glyph (fixture-tested, §20): canonical mark names
+// (§9.3) get glyph + color; custom classifier names (§16.5) render as a
+// neutral muted dot.
+export function markGlyphSpec(mark) {
+  const name = String(mark.mark);
+  return {
+    cls: name.replace(/[^a-z0-9-]/g, ""),
+    glyph: GLYPHS[name] ?? "·",
+    color: COLORS[name] ?? "var(--muted)",
+    title: `${name} (${mark.markSource})`,
+  };
+}
+
+// Inline-styled (no stylesheet injection): pierre rows live in its shadow
+// root, but CSS custom properties cascade in (process.md foundations).
+function markGlyph(mark) {
+  const { cls, glyph, color, title } = markGlyphSpec(mark);
+  const node = document.createElement("span");
+  node.className = cls ? `sky-mark-glyph sky-mark-${cls}` : "sky-mark-glyph";
+  node.textContent = glyph;
+  node.title = title;
+  node.style.cssText =
+    "position:absolute;inset-block:0;left:6px;display:flex;align-items:center;" +
+    `color:${color};`;
+  return node;
+}
+
+// Sweep-then-stamp, idempotent. Anchors to the gutter's [data-column-number]
+// cell (position:relative, line number in the attribute) — pierre-internal
+// structure:
+// shortcut: gutter selectors are @pierre/diffs internals (pinned exact, spec
+// §2); re-verify against a rendered diff when bumping @pierre/diffs —
+// upgrade path is a native pierre gutter-annotation API.
+function stampMarks(root, marks) {
+  if (!root) return;
+  for (const old of root.querySelectorAll(".sky-mark-glyph")) old.remove();
+  for (const m of marks) {
+    const cell = root.querySelector(
+      `code[data-${m.side === "old" ? "deletions" : "additions"}] [data-column-number="${m.line}"]`,
+    );
+    if (cell) cell.append(markGlyph(m));
+  }
 }
 
 // (Comment-row styling lives in style.css: pierre appends annotation rows

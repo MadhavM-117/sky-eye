@@ -11,22 +11,6 @@ export function timeAgo(ts) {
   return `${Math.round(s / 86400)}d`;
 }
 
-// Attention-mark chip (M5): focus / glance / safe with colors from style.css
-// custom properties layered over the pierre theme (process.md foundations);
-// custom classifiers may emit other names (§16.5) — they render as a neutral
-// chip (class sanitized, marks come from stored/imported JSON).
-export function markNode(mark) {
-  const glyph = { focus: "◆", glance: "▲", safe: "●" }[mark.mark] ?? "·";
-  const cls = String(mark.mark).replace(/[^a-z0-9-]/g, "");
-  const node = el(
-    "span",
-    `sky-mark${cls ? ` sky-mark-${cls}` : ""}`,
-    `${glyph} ${mark.mark}`,
-  );
-  node.title = `${mark.mark} (${mark.markSource})`;
-  return node;
-}
-
 function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;

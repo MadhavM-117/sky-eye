@@ -564,11 +564,16 @@ Three views, hash-routed (`#` empty → first screen):
    banner) → chapters as accordion, **expanded by default**; narrative as a
    plain editable text field above the diff (save → `narrativeEdited`); per-
    file headings; per chapter, a `@pierre/diffs` `FileDiff` (split style, one
-   file) renders the two-column diff with hunks + context. Attention marks
-   and comments attach through FileDiff's **line-annotation framework** (the
-   same mechanism Pierre's own review UI uses) — no hand-built DOM overlays;
-   gutter clicks use its selection API. Empty diff → "nothing to review"
-   message.
+   file) renders the two-column diff with hunks + context. Comments attach
+   through FileDiff's **line-annotation framework** (annotation rows under
+   the line) — no hand-built DOM overlays; gutter clicks use its selection
+   API. Attention marks do **not** occupy annotation rows: they render as
+   one colored glyph per marked line in the diff's gutter column (beside
+   the line numbers) via FileDiff's `onPostRender` hook — a post-render
+   decoration pass, swept and re-stamped on every repaint including
+   virtualized scroll — so a mark adds no vertical space and large MRs stay
+   readable (task 009; full plan `tmp/plans/marks-column/plan.md`). Empty
+   diff → "nothing to review" message.
 3. **Explorer:** breadcrumb + head/base side toggle (sky-eye) around an
    `@pierre/trees` `FileTree` (directory navigation, search, git-status
    badges on changed files via `setGitStatus`); read-only file view rendered

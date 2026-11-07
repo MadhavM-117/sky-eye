@@ -16,8 +16,8 @@ accepted. Spec §8/§9.3/§13 updated (done with this task's doc edits);
 design.md D§3 row 2 + D§4 updated.
 
 **Ripple into later tasks:** `LineMark` now carries `file` — task 007 (M5
-attention marks) must set it when marking lines. 008/009 (export/import,
-narratives) inherit the model; 009's prompt will receive multi-file diffs.
+attention marks) must set it when marking lines. 008/010/011 (export/import,
+narratives) inherit the model; 011's prompt will receive multi-file diffs.
 
 Spec: §8, §9.3, §12, §13.3; design.md D§3 row 2, D§4; ux.md U§3.2.
 

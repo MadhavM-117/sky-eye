@@ -62,22 +62,9 @@ header a { color: var(--fg); text-decoration: none; }
 .session-title:hover { color: var(--accent); }
 .empty { color: var(--muted); font-style: italic; }
 
-/* attention-mark chips in annotation rows (light DOM, so document styles
-   reach them — see pierre-adapter.js) */
-.sky-mark {
-  display: inline-block;
-  padding: 0 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  line-height: 18px;
-  align-self: flex-start;
-  border: 1px solid color-mix(in lab, var(--bg) 75%, currentColor);
-  color: var(--muted); /* neutral default — canonical marks override below;
-                         custom-classifier names (§16.5) render muted */
-}
-.sky-mark-focus { color: var(--mark-focus); }
-.sky-mark-glance { color: var(--mark-glance); }
-.sky-mark-safe { color: var(--mark-safe); }
+/* attention marks (task 009) render as glyphs stamped into pierre's gutter
+   cells inside its shadow root — inline-styled there (document styles don't
+   reach them), colored via these custom properties which cascade in. */
 
 button, select {
   font: inherit;

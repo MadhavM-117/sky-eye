@@ -11,7 +11,7 @@ import {
   selectionSide,
   updateAnnotations,
 } from "./pierre-adapter.js";
-import { commentNode, composerNode, markNode } from "./comments.js";
+import { commentNode, composerNode } from "./comments.js";
 
 // highlighter must be loaded before FileDiff renders anything; await it
 // (best-effort: if it fails, diffs falls back to unhighlighted text)
@@ -281,14 +281,14 @@ function wireSession(session, route = null) {
     }
   };
   // annotations are per file slice inside a chapter (task 009); attention
-  // marks (M5) ride the same projection, filtered to the slice's file
+  // marks (M5) do not ride this projection — the adapter stamps them into
+  // the gutter via onPostRender (task 009), fed per file slice below
   const annotationsFor = (chapter, file) =>
     commentAnnotations(
       current.comments.filter((c) => c.chapterId === chapter.id && c.file === file),
       composer.state?.chapterId === chapter.id && composer.state.file === file
         ? composer.state
         : null,
-      chapter.attention.filter((m) => m.file === file),
     );
 
   const postComment = async (chapter, file, text, priority) => {
@@ -331,7 +331,6 @@ function wireSession(session, route = null) {
   const annotationRow = (annotation, chapter, file) => {
     const row = document.createElement("div");
     row.className = "sky-comment-row";
-    for (const mark of annotation.metadata.marks) row.append(markNode(mark));
     for (const entry of annotation.metadata.comments) {
       if (entry.composer) {
         row.append(
@@ -366,6 +365,7 @@ function wireSession(session, route = null) {
       slice.hunks,
       {
         annotations: annotationsFor(chapter, file),
+      marks: chapter.attention.filter((m) => m.file === file),
         // gutter click → composer at that line (toggle on same line);
         // while a triage re-pin is pending, the click re-pins instead
         onLineNumberClick: ({ lineNumber, annotationSide }) => {

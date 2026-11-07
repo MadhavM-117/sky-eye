@@ -1,4 +1,4 @@
-# 009 — M6 Export/import
+# 010 — M6 Export/import
 
 **Goal:** export a session as a single JSON download; import + merge
 (match by comment id, newer `updatedAt` wins, nothing deleted) + digest

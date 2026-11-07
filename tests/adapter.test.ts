@@ -3,7 +3,7 @@
 // double as the upgrade smoke test (pierre-packages.md upgrade procedure).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { commentAnnotations, fileDiffMetadata, patchText, selectionSide } from "../src/public/pierre-adapter.js";
+import { commentAnnotations, fileDiffMetadata, markGlyphSpec, patchText, selectionSide } from "../src/public/pierre-adapter.js";
 import type { Comment, Hunk, LineMark } from "../src/types.ts";
 
 // adapter input shape: {path, status} + hunks
@@ -143,8 +143,8 @@ test("commentAnnotations: sides map onto pierre deletions/additions", () => {
     comment({ side: "old", line: 2 }),
   ]);
   assert.deepEqual(out, [
-    { side: "additions", lineNumber: 3, metadata: { comments: [comment({ line: 3 })], composer: null, marks: [] } },
-    { side: "deletions", lineNumber: 2, metadata: { comments: [comment({ side: "old", line: 2 })], composer: null, marks: [] } },
+    { side: "additions", lineNumber: 3, metadata: { comments: [comment({ line: 3 })], composer: null } },
+    { side: "deletions", lineNumber: 2, metadata: { comments: [comment({ side: "old", line: 2 })], composer: null } },
   ]);
 });
 
@@ -162,7 +162,7 @@ test("commentAnnotations: composer joins the comments on its line (marker entry)
   assert.deepEqual(solo, {
     side: "deletions",
     lineNumber: 7,
-    metadata: { comments: [{ composer: true }], composer: null, marks: [] },
+    metadata: { comments: [{ composer: true }], composer: null },
   });
 });
 
@@ -170,7 +170,8 @@ test("commentAnnotations: nothing to show → no annotations", () => {
   assert.deepEqual(commentAnnotations([]), []);
 });
 
-// attention-mark projection (M5): marks join the same per-line rows
+// mark gutter glyphs (task 009): the pure spec half of markGlyph (the DOM
+// half runs in the browser; §20 — pure logic as fixtures)
 const mark = (over: Partial<LineMark>): LineMark => ({
   file: "a.ts",
   side: "new",
@@ -180,24 +181,22 @@ const mark = (over: Partial<LineMark>): LineMark => ({
   ...over,
 });
 
-test("commentAnnotations: a mark alone creates its annotation row", () => {
-  assert.deepEqual(commentAnnotations([], null, [mark({ line: 4, mark: "safe" })]), [
-    {
-      side: "additions",
-      lineNumber: 4,
-      metadata: { comments: [], composer: null, marks: [mark({ line: 4, mark: "safe" })] },
-    },
-  ]);
+test("markGlyphSpec: canonical marks map onto glyph + color var", () => {
+  assert.deepEqual(markGlyphSpec(mark({ mark: "focus" })), {
+    cls: "focus",
+    glyph: "◆",
+    color: "var(--mark-focus)",
+    title: "focus (rules)",
+  });
+  assert.equal(markGlyphSpec(mark({ mark: "glance" })).glyph, "▲");
+  assert.equal(markGlyphSpec(mark({ mark: "safe" })).glyph, "●");
 });
 
-test("commentAnnotations: mark and comment on one line share a row", () => {
-  const [row] = commentAnnotations([comment({ line: 3 })], null, [mark({ line: 3 })]);
-  assert.deepEqual(row.metadata.marks, [mark({ line: 3 })]);
-  assert.equal(row.metadata.comments.length, 1);
-});
-
-test("commentAnnotations: old-side marks map onto deletions", () => {
-  const [row] = commentAnnotations([], null, [mark({ side: "old", line: 2 })]);
-  assert.equal(row.side, "deletions");
-  assert.equal(row.lineNumber, 2);
+test("markGlyphSpec: custom classifier names → neutral muted dot (§16.5)", () => {
+  const spec = markGlyphSpec(mark({ mark: "danger", markSource: "custom" }));
+  assert.equal(spec.glyph, "·");
+  assert.equal(spec.color, "var(--muted)");
+  assert.equal(spec.cls, "danger"); // sanitized class for scoping
+  assert.equal(spec.title, "danger (custom)"); // mark name + source on hover
+  assert.equal(markGlyphSpec(mark({ mark: "we!rd-name" })).cls, "werd-name");
 });

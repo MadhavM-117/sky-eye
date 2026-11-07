@@ -33,6 +33,7 @@ export declare function createFileDiff(
     onGutterUtilityClick?: (range: { start: number; side?: string }) => void;
     renderAnnotation?: (annotation: unknown) => HTMLElement;
     annotations?: unknown[];
+    marks?: LineMark[];
   },
 ): { el: HTMLElement; fileDiff: unknown; dispose: () => void } | null;
 
@@ -41,22 +42,29 @@ export declare function updateAnnotations(
   annotations: unknown[],
 ): void;
 
-// Comment + mark projection: comments/attention marks grouped per (side,
-// line) into side-aware annotation rows; an open composer joins its line as
-// a marker entry.
+// Comment projection: comments grouped per (side, line) into side-aware
+// annotation rows; an open composer joins its line as a marker entry.
+// Attention marks do not ride this projection (gutter column, task 009).
 export declare function commentAnnotations(
   comments: Comment[],
   composer?: { side: "old" | "new"; line: number } | null,
-  marks?: LineMark[],
 ): {
   side: "deletions" | "additions";
   lineNumber: number;
   metadata: {
     comments: (Comment | { composer: true })[];
     composer: null;
-    marks: LineMark[];
   };
 }[];
+
+// Pure part of the marks gutter glyph (task 009): canonical mark names →
+// glyph + color var; custom classifier names → neutral muted dot (§16.5).
+export declare function markGlyphSpec(mark: LineMark): {
+  cls: string;
+  glyph: string;
+  color: string;
+  title: string;
+};
 
 // Deep-link targets inside pierre's shadow DOM.
 export declare function queryRow(

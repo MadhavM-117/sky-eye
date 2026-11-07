@@ -243,3 +243,23 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   `FileDiff` instances, so inter-hunk separators render inside each file;
   default `line-info` looks right. Revisit only if chapter boundaries ever
   need custom separator markup (M4 chunker tuning).
+
+## Integration facts (learned at task 009, diffs 1.6.4)
+
+- Pierre has **no persistent gutter column** — line annotations are always
+  full-width rows below the line; `renderGutterUtility` is hover-only. Task
+  009 works around this with the `onPostRender(node, instance, phase)`
+  hook: public API, fires after **every** render including
+  `VirtualizedFileDiff` scroll repaints; `node` is the `<diffs-container>`
+  element (open shadow root — decorate inside it).
+- Split-mode row DOM (inside the shadow root): two `code[data-deletions]` /
+  `code[data-additions]` elements, each a grid of `[data-gutter]` +
+  `[data-content]`; line numbers are `[data-column-number]` cells
+  (**`position: relative`**, `min-height: 1lh`, `padding-left: 2ch`,
+  4px change-indicator `::before` at `left: 0`), content rows are
+  `[data-line]`. `data-column-number` = the displayed line number; glyphs
+  anchor there (absolute, `left: 6px` clears the indicator bar).
+- `@pierre/diffs/ssr`'s `preloadFileDiff` returns `{prerenderedHTML}` —
+  render a real split diff to HTML **in Node** to inspect row structure
+  without a browser (used to verify the gutter selectors for 009; keep
+  using this for any future row-internal decoration work).

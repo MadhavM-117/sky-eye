@@ -4,4 +4,4 @@
   config makes `git diff` emit `i/`/`w/` and `parseUnifiedDiff` returns 0
   files (found while manually verifying task 005). Fix candidate: pass
   `--no-mnemonic-prefix` (or `-c diff.mnemonicPrefix=false`) in `buildDiff`.
-  Tracked as task 011.
+  Tracked as task 012.
