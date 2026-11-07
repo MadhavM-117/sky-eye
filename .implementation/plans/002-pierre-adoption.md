@@ -1,6 +1,6 @@
-# Plan — Task 008: Pierre adoption
+# Plan — Task 002: Pierre adoption
 
-**Task:** `.implementation/tasks/008-pierre-adoption.md` · **Spec:** §2 (deps), §18 (frontend arch), §19 (highlighting), §11/§10 (tree API)
+**Task:** `.implementation/tasks/002-pierre-adoption.md` · **Spec:** §2 (deps), §18 (frontend arch), §19 (highlighting), §11/§10 (tree API)
 **Accept:** M1 criteria (001 plan) driven by pierre rendering; no hand-rolled
 highlight/diff code; `npm run build` bundles in one command.
 
@@ -23,7 +23,7 @@ highlight/diff code; `npm run build` bundles in one command.
 - Selection API: FileDiff options `enableLineSelection` +
   `onLineSelectionChange(range: SelectedLineRange | null)`;
   `SelectedLineRange.side` is `'deletions' | 'additions'` → map to
-  sky-eye `'old' | 'new'`. Annotation hooks confirmed for 002/005:
+  sky-eye `'old' | 'new'`. Annotation hooks confirmed for 003/007:
   `renderAnnotation` option + `setLineAnnotations()`; annotations can be
   per-side (`DiffLineAnnotation` has side info).
 - `File` component: `new File({theme}).render({ file: {name, contents}, fileContainer })`

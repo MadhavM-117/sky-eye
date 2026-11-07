@@ -1,4 +1,4 @@
-# 009 — Multi-file chapters — **done**
+# 006 — Multi-file chapters — **done**
 
 **Goal:** a chapter can encompass hunks from several files; the file-boundary
 split rule is removed from the chunker. Comments, anchors, remap, deep links
@@ -15,9 +15,9 @@ treated as absent — `.sky-watch/` is derived cache, losing old sessions is
 accepted. Spec §8/§9.3/§13 updated (done with this task's doc edits);
 design.md D§3 row 2 + D§4 updated.
 
-**Ripple into later tasks:** `LineMark` now carries `file` — task 010 (M5
-attention marks) must set it when marking lines. 011/012 (export/import,
-narratives) inherit the model; 012's prompt will receive multi-file diffs.
+**Ripple into later tasks:** `LineMark` now carries `file` — task 007 (M5
+attention marks) must set it when marking lines. 008/009 (export/import,
+narratives) inherit the model; 009's prompt will receive multi-file diffs.
 
 Spec: §8, §9.3, §12, §13.3; design.md D§3 row 2, D§4; ux.md U§3.2.
 

@@ -1,4 +1,4 @@
-# 008 — Pierre adoption (frontend deps unlocked)
+# 002 — Pierre adoption (frontend deps unlocked)
 
 **Goal:** replace the hand-rolled diff renderer, highlighter, and explorer
 tree with the `@pierre/*` packages, per the revised dependency policy
@@ -18,8 +18,8 @@ Slices:
    `Session`/`Hunk`/`DiffLine` JSON → `FileDiff` render input; wire
    selection events back to app actions.
 3. Session view: per-chapter `FileDiff` (split); delete `diffview.js` +
-   `highlight.js`. Verify attention-mark styling hooks exist for 005 and
-   annotation hooks for 002.
+   `highlight.js`. Verify attention-mark styling hooks exist for 007 and
+   annotation hooks for 003.
 4. Explorer: `@pierre/trees` `FileTree` (search + `setGitStatus` for changed
    files) inside the existing breadcrumb/side-toggle chrome; delete the
    hand-rolled tree rendering.

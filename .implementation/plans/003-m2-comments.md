@@ -1,4 +1,4 @@
-# 002 — M2 Comments — plan
+# 003 — M2 Comments — plan
 
 Spec: §12 (comments & anchors), §15 (identity), §17 (deep links), §10 (API
 contract), §21 M2. Pierre notes: `.implementation/docs/pierre-packages.md`
@@ -99,6 +99,6 @@ Frontend (all pierre contact through the adapter):
 - `renderAnnotation` receives metadata we define — keep metadata as
   plain {kind: 'comment'|'composer', comment|composerState} payloads, not
   pierre shapes, per the adapter rule.
-- Old-side (deletions) annotations confirmed working at 008.
+- Old-side (deletions) annotations confirmed working at 002.
 - Deep-link line targets the annotation DOM node for scroll/flash
   (`onPostRender` or query inside `el` shadow root; verify at spike).

@@ -299,7 +299,7 @@ export function chunk(files: FileDiff[], config: ReviewConfig = { targetLines: 7
 ```
 
 M1 implements rules 1–3 + 5; the funcname/keep-together refinements (rules 4, funcname
-context) are task 004 — structure the loop so a "shouldSplit(prevHunk, nextHunk)"
+context) are task 005 — structure the loop so a "shouldSplit(prevHunk, nextHunk)"
 predicate is the single place they hook in:
 
 ```ts
@@ -479,7 +479,7 @@ Zero-dependency line tokenizer for **JS/TS, Python, Rust, Go, JSON**:
 - **Types live in `src/types.ts`, not spread across modules** — process.md foundations:
   strict TS is the single schema source. Frontend mirrors only what it reads
   (loose `any`-ish shapes in JS, no `checkJs`).
-- **Chunker loop structured around a `shouldSplit` predicate** so task 004 only edits
+- **Chunker loop structured around a `shouldSplit` predicate** so task 005 only edits
   the predicate + adds funcname/keep-together rules, not the loop.
 - **Static + tree/file containment share one `validatePath`** — spec explicitly reuses
   the §11 rule for static serving (§4.3).

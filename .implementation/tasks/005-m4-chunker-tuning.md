@@ -1,4 +1,4 @@
-# 004 — M4 Chunker tuning — **done**
+# 005 — M4 Chunker tuning — **done**
 
 **Goal:** chapters split at function boundaries, keep-together rules,
 `review` size config knob.

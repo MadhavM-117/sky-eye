@@ -1,4 +1,4 @@
-# 003 — M3 Rebase survival (plan)
+# 004 — M3 Rebase survival (plan)
 
 ## What changes
 
@@ -31,7 +31,7 @@ Frontend (`app.js`, no new pierre surface — adapter stays idempotent):
   successor; orphan triage banner listing unresolved orphans with
   re-pin/resolve. Re-pin: click sets triage target, next gutter click on
   that file's diff sends `PATCH /api/comments/:id {reanchor}` (reuses the
-  002 selection path), then clears triage.
+  003 selection path), then clears triage.
 
 ## Files
 

@@ -19,5 +19,5 @@ in non-Docker repos.
 Notes: `style.css` defines all theme values as CSS custom properties from
 day one. Node ≥ 22.6, type stripping. **Update:** shipped with the
 hand-rolled `diffview.js`/`highlight.js` before the dependency policy was
-revised (spec §2); slice 4 is superseded by task `008` — delete those files
+revised (spec §2); slice 4 is superseded by task `002` — delete those files
 in favor of `@pierre/*`.

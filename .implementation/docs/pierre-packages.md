@@ -9,7 +9,7 @@ replace it — add learned API details and gotchas as they surface.
 
 | Package | Version basis | Role in sky-eye |
 |---|---|---|
-| `@pierre/diffs` | 1.6.4 (stable, active 1.x) | `FileDiff` (split/unified two-column diff), `File`/`CodeView` (explorer file view), `VirtualizedFileDiff`/`VirtualizedFile` (large diffs), line-annotation framework (comments 002, marks 005), selection API (gutter clicks) |
+| `@pierre/diffs` | 1.6.4 (stable, active 1.x) | `FileDiff` (split/unified two-column diff), `File`/`CodeView` (explorer file view), `VirtualizedFileDiff`/`VirtualizedFile` (large diffs), line-annotation framework (comments 003, marks 007), selection API (gutter clicks) |
 | `@pierre/highlights` | 0.4.0 | 152-language WAT/WASM highlighter; used *indirectly* — diffs renders with it; we don't call it directly in v1 |
 | `@pierre/trees` | 1.0.0-beta.6 (beta) | `FileTree` class for the explorer's tree navigation (search, git-status badges) |
 | `@pierre/theme` | 2.0.0 (transitive) | The Pierre theme for Shiki; drives diff/file coloring |
@@ -29,7 +29,7 @@ Two sources of truth, in this order:
    unclear.
 
 Version pinning note: `@pierre/trees` and `@pierre/path-store` are beta; if
-trees blocks a task, fall back to our pre-008 hand-rolled tree rendering
+trees blocks a task, fall back to our pre-002 hand-rolled tree rendering
 (keep it in git history; restore with `jj restore`) rather than pinning a
 moving beta in a hurry.
 
@@ -52,7 +52,7 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   wholesale replacement is safe and idempotent; incremental mutation is
   where stale-render bugs live.
 - Sky-eye never persists anything pierre-shaped. The session file stays
-  pierre-agnostic (this is why export/import, 006, has no pierre surface).
+  pierre-agnostic (this is why export/import, 008, has no pierre surface).
 
 ## Build pattern (esbuild)
 
@@ -64,7 +64,7 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   hand-copy pierre CSS into `style.css`. Our `style.css` keeps only app
   chrome; diff/tree internals are styled by pierre's classes + the theme's
   CSS custom properties.
-- `@pierre/highlights` initializes WASM at import. Verify at task 008 how
+- `@pierre/highlights` initializes WASM at import. Verify at task 002 how
   the dist loads its `.wasm` (inlined vs. fetched asset) and configure
   esbuild asset handling accordingly — this is the most likely bundling
   surprise.
@@ -83,7 +83,7 @@ on an upgrade and the single place version-diff reviews. Corollaries:
 - Split is the default `diffStyle`; unified is an option. Sky-eye uses
   split (GitHub-style two-column, D§3 row 1).
 - **Annotations** (`LAnnotation` generic on `FileDiff`): per-line injected
-  content — this is how comments (002) and attention marks (005) render.
+  content — this is how comments (003) and attention marks (007) render.
   Pierre's own review UI renders comments this way; read
   `diffs/test/annotations.test.ts` and `annotationHelpers.test.ts` for
   working patterns before designing ours.
@@ -91,9 +91,9 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   re-pin flows. Prefer its selection events over our own click handlers on
   rendered rows.
 - `hunkSeparators` option controls inter-hunk rendering — chapter boundaries
-  (§8) may map onto it; verify visually at 008.
+  (§8) may map onto it; verify visually at 002.
 - Virtualized variants exist for huge files (`VirtualizedFileDiff`) — the
-  §22.5 decision at 004 is a component swap, not a project.
+  §22.5 decision at 005 is a component swap, not a project.
 - React entries exist (`/react`, peer dep) — **we do not use them** (design
   §10 cut). Vanilla entry only.
 
@@ -106,7 +106,7 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   from chapters, U§2).
 - **Renders inside a shadow root** — our CSS custom properties must be
   injected into that shadow root, not just the document; verify the mount
-  options at 008 slice 4.
+  options at 002 slice 4.
 - State is keyed by canonical path strings; paths we feed must be
   repo-relative and normalized (matches our §11 containment rules — good).
 - Call `tree.cleanUp()` when leaving the explorer view (it holds DOM +
@@ -119,7 +119,7 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   if we ever call it directly; diffs does its own highlighting.)
 - Themes: Zed-compatible; `@pierre/theme` is the bundled Pierre look.
 
-## Integration facts (learned at task 008, diffs 1.6.4 / trees 1.0.0-beta.6)
+## Integration facts (learned at task 002, diffs 1.6.4 / trees 1.0.0-beta.6)
 
 - **Render input:** pass `render({ fileDiff: <FileDiffMetadata>, containerWrapper })`
   — not `fileContainer`. With `containerWrapper`, FileDiff creates its own
@@ -149,9 +149,9 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   `'deletions' | 'additions'`. Annotation hooks confirmed:
   `renderAnnotation` option + `setLineAnnotations()`, annotations are
   side-aware (`'deletions' | 'additions'`) — old-side comments render fine
-  (002 unknown resolved).
+  (003 unknown resolved).
 
-## Integration facts (learned at task 002, diffs 1.6.4)
+## Integration facts (learned at task 003, diffs 1.6.4)
 
 - **Gutter click → composer:** use `onLineNumberClick({ lineNumber,
   annotationSide })`, not the selection API — selection also fires while

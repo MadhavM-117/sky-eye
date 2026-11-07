@@ -1,4 +1,4 @@
-# 012 — M7 LLM narratives + refined classification
+# 009 — M7 LLM narratives + refined classification
 
 **Goal:** `llm.ts` (OpenAI-compatible fetch client) + `narrate.ts` with lazy
 firing on first chapter expansion, caching, editable narratives with
@@ -9,10 +9,10 @@ rules-only; with config → narratives generated on first expansion, cached,
 editable, re-run asks before overwriting edits.
 
 Spec: §16. Open questions to settle at task start: LLM protocol/provider
-confirmation (§22.2), blocking vs streaming. Multi-file chapters (009): the
+confirmation (§22.2), blocking vs streaming. Multi-file chapters (006): the
 narrative prompt input is the chapter's diff across **all** its file slices
 (spec §8 model), so a multi-file chapter narrates as one unit.
 
-Pierre notes (after 008): none — narratives render in sky-eye's own editable
+Pierre notes (after 002): none — narratives render in sky-eye's own editable
 text field above the `FileDiff` block; the LLM layer never touches pierre
-objects. Marks from the shared classify call ride the 005 annotation path.
+objects. Marks from the shared classify call ride the 007 annotation path.

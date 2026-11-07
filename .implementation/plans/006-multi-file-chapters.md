@@ -1,4 +1,4 @@
-# Plan 010 — Multi-file chapters
+# Plan 006 — Multi-file chapters
 
 ## What changes
 
@@ -14,7 +14,7 @@
 3. **`src/store.ts`** — no legacy migration (decided): a session JSON whose
    chapters lack `files[]` fails validation and is treated as absent on
    load. `.sky-watch/` is derived cache; losing old sessions/comments is
-   accepted (user decision, recorded in task 009).
+   accepted (user decision, recorded in task 006).
 4. **Consumers of `chapter.file` / `chapter.hunks`** — grep callers:
    `src/routes.ts` (comment capture, orphan triage), `src/remap.ts`
    (§13.3 step 4: visibility check per `anchor.file` slice, chapterId
@@ -33,10 +33,10 @@
   orphan immediately (unchanged).
 - Session schema: old `.sky-watch/*.json` need not load (no migration,
   decided).
-- Chapter-id stability: ids differ from pre-010 sessions on the same diff
+- Chapter-id stability: ids differ from pre-006 sessions on the same diff
   (accepted — comments ride content anchors, not chapter ids, §13.4).
 - Narrative/attention per chapter: unchanged placement, but the LLM prompt
-  (M7) will receive a multi-file diff — noted for 012.
+  (M7) will receive a multi-file diff — noted for 009.
 
 ## Testing
 

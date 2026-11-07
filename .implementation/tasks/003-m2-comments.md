@@ -1,4 +1,4 @@
-# 002 — M2 Comments
+# 003 — M2 Comments
 
 **Goal:** click a diff line, comment, resolve, copy/open deep links, persist —
 with author identity from jj/git config and server-side content anchors
@@ -13,7 +13,7 @@ Spec: §12 (comments & anchors), §15 (identity), §17 (deep links), composer UX
 is designed here (U§4 deferred block) — check in with the user on the composer
 design before building it.
 
-Pierre notes (after 008): comments render through `@pierre/diffs`' line-
+Pierre notes (after 002): comments render through `@pierre/diffs`' line-
 annotation framework, not hand-built DOM overlays — extend the adapter to
 project stored `Comment`s (side, line, text, resolved) onto FileDiff
 annotations and translate gutter clicks to the composer via the selection
