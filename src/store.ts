@@ -6,6 +6,7 @@ import path from "node:path";
 import { ApiError, validateRef } from "./cli.ts";
 import { buildDiff, diffDigest, parseUnifiedDiff } from "./diff.ts";
 import { chunk, loadConfig } from "./chunker.ts";
+import { withAttention } from "./classify.ts";
 import { resolveStableId } from "./refs.ts";
 import { getIdentity } from "./identity.ts";
 import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
@@ -145,7 +146,7 @@ export async function createSession(
     lastWriteAt: now,
     meta: { repo: root },
     reviewed: false,
-    chapters: chunk(parseUnifiedDiff(diffText), config),
+    chapters: chunk(parseUnifiedDiff(diffText), config).map(withAttention),
     comments: [],
   };
   return { session: writeSession(root, session), created: true };

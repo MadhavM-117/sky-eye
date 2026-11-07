@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { commentAnnotations, fileDiffMetadata, patchText, selectionSide } from "../src/public/pierre-adapter.js";
-import type { Comment, Hunk } from "../src/types.ts";
+import type { Comment, Hunk, LineMark } from "../src/types.ts";
 
 // adapter input shape: {path, status} + hunks
 const modified = { path: "src/app.ts", status: "modified" } as const;
@@ -143,8 +143,8 @@ test("commentAnnotations: sides map onto pierre deletions/additions", () => {
     comment({ side: "old", line: 2 }),
   ]);
   assert.deepEqual(out, [
-    { side: "additions", lineNumber: 3, metadata: { comments: [comment({ line: 3 })], composer: null } },
-    { side: "deletions", lineNumber: 2, metadata: { comments: [comment({ side: "old", line: 2 })], composer: null } },
+    { side: "additions", lineNumber: 3, metadata: { comments: [comment({ line: 3 })], composer: null, marks: [] } },
+    { side: "deletions", lineNumber: 2, metadata: { comments: [comment({ side: "old", line: 2 })], composer: null, marks: [] } },
   ]);
 });
 
@@ -162,10 +162,42 @@ test("commentAnnotations: composer joins the comments on its line (marker entry)
   assert.deepEqual(solo, {
     side: "deletions",
     lineNumber: 7,
-    metadata: { comments: [{ composer: true }], composer: null },
+    metadata: { comments: [{ composer: true }], composer: null, marks: [] },
   });
 });
 
 test("commentAnnotations: nothing to show → no annotations", () => {
   assert.deepEqual(commentAnnotations([]), []);
+});
+
+// attention-mark projection (M5): marks join the same per-line rows
+const mark = (over: Partial<LineMark>): LineMark => ({
+  file: "a.ts",
+  side: "new",
+  line: 3,
+  mark: "focus",
+  markSource: "rules",
+  ...over,
+});
+
+test("commentAnnotations: a mark alone creates its annotation row", () => {
+  assert.deepEqual(commentAnnotations([], null, [mark({ line: 4, mark: "safe" })]), [
+    {
+      side: "additions",
+      lineNumber: 4,
+      metadata: { comments: [], composer: null, marks: [mark({ line: 4, mark: "safe" })] },
+    },
+  ]);
+});
+
+test("commentAnnotations: mark and comment on one line share a row", () => {
+  const [row] = commentAnnotations([comment({ line: 3 })], null, [mark({ line: 3 })]);
+  assert.deepEqual(row.metadata.marks, [mark({ line: 3 })]);
+  assert.equal(row.metadata.comments.length, 1);
+});
+
+test("commentAnnotations: old-side marks map onto deletions", () => {
+  const [row] = commentAnnotations([], null, [mark({ side: "old", line: 2 })]);
+  assert.equal(row.side, "deletions");
+  assert.equal(row.lineNumber, 2);
 });

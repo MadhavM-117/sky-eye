@@ -115,10 +115,10 @@ export function updateAnnotations(diff, annotations) {
   diff.fileDiff.render({ lineAnnotations: annotations });
 }
 
-// sky-eye comments (+ optional open composer) → side-aware
-// DiffLineAnnotations: all comments on one line group into a single
-// annotation row. Pure projection — fixture-tested.
-export function commentAnnotations(comments, composer = null) {
+// sky-eye comments (+ optional open composer, + attention marks, M5) →
+// side-aware DiffLineAnnotations: all entries on one line group into a
+// single annotation row. Pure projection — fixture-tested.
+export function commentAnnotations(comments, composer = null, marks = []) {
   const byLine = new Map();
   const push = (skyEyeSide, line, entry) => {
     const key = `${skyEyeSide}:${line}`;
@@ -126,12 +126,22 @@ export function commentAnnotations(comments, composer = null) {
       byLine.set(key, {
         side: skyEyeSide === "old" ? "deletions" : "additions",
         lineNumber: line,
-        metadata: { comments: [], composer: null },
+        metadata: { comments: [], composer: null, marks: [] },
       });
     byLine.get(key).metadata.comments.push(entry);
   };
   for (const c of comments) push(c.side, c.line, c);
   if (composer) push(composer.side, composer.line, { composer: true });
+  for (const m of marks) {
+    const key = `${m.side}:${m.line}`;
+    if (!byLine.has(key))
+      byLine.set(key, {
+        side: m.side === "old" ? "deletions" : "additions",
+        lineNumber: m.line,
+        metadata: { comments: [], composer: null, marks: [] },
+      });
+    byLine.get(key).metadata.marks.push(m);
+  }
   return [...byLine.values()];
 }
 

@@ -6,6 +6,7 @@
 import { run, tryRun, validateRef, ApiError } from "./cli.ts";
 import { buildDiff, diffDigest, parseUnifiedDiff } from "./diff.ts";
 import { chunk, loadConfig } from "./chunker.ts";
+import { withAttention } from "./classify.ts";
 import { captureAnchor } from "./anchors.ts";
 import { readFileAt } from "./tree.ts";
 import { persistSession } from "./store.ts";
@@ -189,7 +190,7 @@ export async function refreshSession(
     const diffText = await buildDiff(root, kind, session.base, session.head);
     const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
     session.chapters = carryNarratives(
-      chunk(parseUnifiedDiff(diffText), loadConfig(root)),
+      chunk(parseUnifiedDiff(diffText), loadConfig(root)).map(withAttention),
       oldChapters,
     );
     session.diffDigest = diffDigest(diffText);
@@ -233,7 +234,7 @@ async function createSuccessor(
   };
   const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
   successor.chapters = carryNarratives(
-    chunk(parseUnifiedDiff(diffText), loadConfig(root)),
+    chunk(parseUnifiedDiff(diffText), loadConfig(root)).map(withAttention),
     oldChapters,
   );
   await remapComments(root, kind, successor);

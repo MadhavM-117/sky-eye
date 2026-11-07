@@ -11,6 +11,15 @@ export function timeAgo(ts) {
   return `${Math.round(s / 86400)}d`;
 }
 
+// Attention-mark glyph (M5): focus / glance / safe, colors from style.css
+// custom properties layered over the pierre theme (process.md foundations).
+export function markNode(mark) {
+  const glyph = { focus: "◆", glance: "▲", safe: "●" }[mark.mark] ?? "·";
+  const node = el("span", `sky-mark sky-mark-${mark.mark}`, `${glyph} ${mark.mark}`);
+  node.title = `${mark.mark} (${mark.markSource})`;
+  return node;
+}
+
 function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;

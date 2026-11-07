@@ -1,6 +1,6 @@
 // Minimal declarations for the plain-JS frontend adapter (public/ is vanilla
 // ES modules per spec §18; these types exist so TS tests can import it).
-import type { Chapter, Comment, FileDiff } from "../types.ts";
+import type { Chapter, Comment, FileDiff, LineMark } from "../types.ts";
 
 // `file` is {path, status}; app.js passes {path: chapter.file, status: chapter.status}.
 type DiffFile = Pick<FileDiff, "path" | "status">;
@@ -41,15 +41,21 @@ export declare function updateAnnotations(
   annotations: unknown[],
 ): void;
 
-// Comment projection: comments grouped per (side, line) into side-aware
-// annotation rows; an open composer joins its line as a marker entry.
+// Comment + mark projection: comments/attention marks grouped per (side,
+// line) into side-aware annotation rows; an open composer joins its line as
+// a marker entry.
 export declare function commentAnnotations(
   comments: Comment[],
   composer?: { side: "old" | "new"; line: number } | null,
+  marks?: LineMark[],
 ): {
   side: "deletions" | "additions";
   lineNumber: number;
-  metadata: { comments: (Comment | { composer: true })[]; composer: null };
+  metadata: {
+    comments: (Comment | { composer: true })[];
+    composer: null;
+    marks: LineMark[];
+  };
 }[];
 
 // Deep-link targets inside pierre's shadow DOM.

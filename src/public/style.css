@@ -21,6 +21,10 @@
   --error-bg: color-mix(in lab, var(--bg) 92%, var(--deleted));
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* attention marks (M5): focus/red, glance/amber, safe/green */
+  --mark-focus: var(--deleted);
+  --mark-glance: var(--warning);
+  --mark-safe: var(--added);
 }
 
 * { box-sizing: border-box; }
@@ -57,6 +61,21 @@ header a { color: var(--fg); text-decoration: none; }
 .session-title { font-weight: 600; cursor: pointer; }
 .session-title:hover { color: var(--accent); }
 .empty { color: var(--muted); font-style: italic; }
+
+/* attention-mark chips in annotation rows (light DOM, so document styles
+   reach them — see pierre-adapter.js) */
+.sky-mark {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  align-self: flex-start;
+  border: 1px solid color-mix(in lab, var(--bg) 75%, currentColor);
+}
+.sky-mark-focus { color: var(--mark-focus); }
+.sky-mark-glance { color: var(--mark-glance); }
+.sky-mark-safe { color: var(--mark-safe); }
 
 button, select {
   font: inherit;
