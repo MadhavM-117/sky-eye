@@ -514,3 +514,93 @@ test("refresh: jj change-id key survives, session updates in place (spec §13.2)
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
+
+// ---- custom classifier (spec §16.5) ---------------------------------------
+
+const CL_CONFIG = (command: string, extra: object = {}) =>
+  JSON.stringify({ classifier: { command, ...extra } });
+
+// classifier that marks every changed line `custom-hot` (extensible name)
+const CL_SCRIPT = `
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
+  const req = JSON.parse(input);
+  const marks = [];
+  for (const ch of req.chapters)
+    for (const f of ch.files)
+      for (const h of f.hunks)
+        for (const l of h.lines)
+          marks.push({ file: f.file, side: l.side, line: l.line, mark: "custom-hot" });
+  console.log(JSON.stringify({ marks }));
+});`;
+
+const attentionOf = (session: any) =>
+  session.chapters.flatMap((c: any) => c.attention);
+
+test("integration: custom classifier overrides rules marks, logged", async () => {
+  await withServer(async (port, repo) => {
+    portOf = port;
+    fs.writeFileSync(path.join(repo, ".classifier.mjs"), CL_SCRIPT);
+    fs.mkdirSync(path.join(repo, ".sky-watch"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repo, ".sky-watch", "config.json"),
+      CL_CONFIG("node .classifier.mjs", { debug: true }),
+    );
+    const refs = await get("/api/refs");
+    const session = await mut("POST", "/api/sessions", {
+      base: refs.body.defaultBase.id,
+      head: refs.body.head.id,
+    });
+    const attention = attentionOf(session.body);
+    assert.ok(attention.length > 0);
+    assert.ok(attention.every((m: any) => m.markSource === "custom" && m.mark === "custom-hot"));
+
+    // log entry written, rotated on the next run
+    const log1 = JSON.parse(fs.readFileSync(path.join(repo, ".sky-watch", "classifier.log"), "utf8"));
+    assert.equal(log1.failed, false);
+    assert.equal(log1.marksOut, attention.length);
+    assert.ok(log1.request); // debug: true → full transcript
+
+    // second rebuild (new commit → new session) rotates the log
+    git(repo, "commit", "--allow-empty", "-m", "rotate log");
+    const refs2 = await get("/api/refs");
+    await mut("POST", "/api/sessions", {
+      base: refs.body.defaultBase.id,
+      head: refs2.body.head.id,
+    });
+    assert.ok(fs.existsSync(path.join(repo, ".sky-watch", "classifier.log.1")));
+  });
+});
+
+test("integration: broken classifier → fallback keeps rules; fallback:false clears", async () => {
+  await withServer(async (port, repo) => {
+    portOf = port;
+    fs.mkdirSync(path.join(repo, ".sky-watch"), { recursive: true });
+    const refs = await get("/api/refs");
+    const body = { base: refs.body.defaultBase.id, head: refs.body.head.id };
+
+    // default fallback: rules marks survive the failure
+    fs.writeFileSync(path.join(repo, ".sky-watch", "config.json"), CL_CONFIG("exit 3"));
+    const fallback = await mut("POST", "/api/sessions", body);
+    const rulesAttention = attentionOf(fallback.body);
+    assert.ok(rulesAttention.length > 0);
+    assert.ok(rulesAttention.every((m: any) => m.markSource === "rules"));
+
+    // fallback:false: the classifier is authoritative — marks cleared (visible
+    // failure, not silent stale marks). New commit → distinct session id.
+    fs.writeFileSync(
+      path.join(repo, ".sky-watch", "config.json"),
+      CL_CONFIG("exit 3", { fallback: false }),
+    );
+    git(repo, "commit", "--allow-empty", "-m", "another head");
+    const refs2 = await get("/api/refs");
+    const cleared = await mut("POST", "/api/sessions", {
+      base: refs.body.defaultBase.id,
+      head: refs2.body.head.id,
+    });
+    assert.equal(attentionOf(cleared.body).length, 0);
+    const log = JSON.parse(fs.readFileSync(path.join(repo, ".sky-watch", "classifier.log"), "utf8"));
+    assert.equal(log.failed, true);
+  });
+});

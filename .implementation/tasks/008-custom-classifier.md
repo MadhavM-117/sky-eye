@@ -24,3 +24,8 @@ Notes:
   overwrites only `markSource: "rules"` marks — custom marks are protected.
 - Future built-in classifiers (LLM-backed, custom decision models such as
   Jev) speak the same protocol — separate task, out of scope for v1.
+
+**Done** (`src/custom-classifier.ts`; rebuild pipeline unified in
+`store.ts → chaptersFromDiff` used by create/refresh/supersede; demo
+classifier + config in `tmp/demo`; verified: custom marks in session,
+fallback/fallback:false paths, log rotation, `debug-classify` transcript).

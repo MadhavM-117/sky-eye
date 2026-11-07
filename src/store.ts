@@ -7,6 +7,7 @@ import { ApiError, validateRef } from "./cli.ts";
 import { buildDiff, diffDigest, parseUnifiedDiff } from "./diff.ts";
 import { chunk, loadConfig } from "./chunker.ts";
 import { withAttention } from "./classify.ts";
+import { applyCustomClassifier, loadClassifyRules } from "./custom-classifier.ts";
 import { resolveStableId } from "./refs.ts";
 import { getIdentity } from "./identity.ts";
 import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
@@ -109,6 +110,22 @@ export function listSessions(root: string): SessionListEntry[] {
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+// The one rebuild pipeline (plan 008): chunk → rules marks → custom
+// classifier merge — so creation, jj refresh and git supersede behave
+// identically. Reads its own config to avoid threading it through.
+export async function chaptersFromDiff(
+  root: string,
+  diffText: string,
+  ids: { base: string; head: string },
+): Promise<Chapter[]> {
+  const rules = loadClassifyRules(root);
+  const chapters = chunk(parseUnifiedDiff(diffText), loadConfig(root)).map((c) =>
+    withAttention(c, rules),
+  );
+  await applyCustomClassifier(root, ids.base, ids.head, chapters);
+  return chapters;
+}
+
 export async function createSession(
   root: string,
   kind: "git" | "jj",
@@ -131,7 +148,6 @@ export async function createSession(
     return { session: existing, created: false }; // 200, no duplicate (U§1.5)
 
   const diffText = await buildDiff(root, kind, baseId, headId);
-  const config = loadConfig(root);
   const now = Date.now();
   const session: Session = {
     id,
@@ -146,7 +162,7 @@ export async function createSession(
     lastWriteAt: now,
     meta: { repo: root },
     reviewed: false,
-    chapters: chunk(parseUnifiedDiff(diffText), config).map(withAttention),
+    chapters: await chaptersFromDiff(root, diffText, { base: baseId, head: headId }),
     comments: [],
   };
   return { session: writeSession(root, session), created: true };

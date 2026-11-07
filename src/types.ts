@@ -25,13 +25,33 @@ export interface FileDiff {
   binary: boolean;
 }
 
+// canonical v1 vocabulary; custom classifiers (§16.5) may emit other names —
+// the `(string & {})` keeps autocomplete while allowing them, the real
+// validation boundary is the classifier protocol's mark regex (§16.5).
+// Unknown names render as a neutral chip (frontend).
+export type MarkName = "focus" | "glance" | "safe" | (string & {});
+
 export type LineMark = {
   file: string; // multi-file chapters: marks are per file slice (spec §9.3)
   side: "old" | "new";
   line: number;
-  mark: "focus" | "glance" | "safe";
-  markSource: "rules" | "llm";
+  mark: MarkName;
+  markSource: "rules" | "llm" | "custom";
 };
+
+// custom classifier command (spec §16.5) — .sky-watch/config.json → `classifier`
+export interface ClassifierConfig {
+  command: string;
+  timeoutMs?: number; // default 30_000
+  fallback?: boolean; // default true: rules marks survive a failed run
+  debug?: boolean; // full request/response into classifier.log
+}
+
+// config globs extending the built-in rule buckets (spec §16.4)
+export interface ClassifyRules {
+  safePaths?: string[];
+  focusPaths?: string[];
+}
 
 // one file's part of a chapter (spec §8: a chapter may span files, one
 // contiguous slice per file, in path order)

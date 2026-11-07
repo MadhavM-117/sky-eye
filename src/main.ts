@@ -5,6 +5,12 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { upsertIgnoreFile } from "./ignore.ts";
 import { serve } from "./server.ts";
+import {
+  classifierRequest,
+  loadClassifierConfig,
+  spawnClassifier,
+} from "./custom-classifier.ts";
+import { loadSession } from "./store.ts";
 import "./routes.ts";
 
 function findRoot(dir: string): string | null {
@@ -26,6 +32,43 @@ if (!root) {
   process.exit(1);
 }
 const kind = fs.existsSync(path.join(root, ".jj")) ? "jj" : "git"; // jj wins for colocated
+
+// `sky-eye debug-classify <sessionId>`: replay the classifier against a
+// stored session — prints the transcript, never writes session or log (§16.5)
+if (process.argv[2] === "debug-classify") {
+  const id = process.argv[3];
+  if (!id) {
+    console.error("usage: sky-eye debug-classify <sessionId>");
+    process.exit(1);
+  }
+  const session = loadSession(root, id);
+  const config = loadClassifierConfig(root);
+  if (!config) {
+    console.error("sky-eye: no classifier configured (.sky-watch/config.json → classifier.command)");
+    process.exit(1);
+  }
+  const request = classifierRequest(root, session.base, session.head, session.chapters);
+  const run = await spawnClassifier({ ...config, debug: true }, root, request);
+  const overridden = run.failed ? 0 : session.chapters.reduce(
+    (n, c) => n + c.attention.filter((m) => run.marks.some((k) =>
+      k.file === m.file && k.side === m.side && k.line === m.line)).length,
+    0,
+  );
+  const rulesMarks = session.chapters.reduce((n, c) => n + c.attention.length, 0);
+  console.log(
+    [
+      `command:  ${config.command}`,
+      `duration: ${run.durationMs}ms, exit: ${run.exitCode}${run.failed ? ` — FAILED: ${run.error}` : ""}`,
+      `marks:    ${run.marks.length} custom applied, ${rulesMarks - overridden} rules kept`,
+      run.stderr ? `--- stderr ---\n${run.stderr.trimEnd()}` : "",
+      `--- request ---\n${request}`,
+      `--- response ---\n${run.response.trimEnd()}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+  process.exit(0);
+}
 
 upsertIgnoreFile(root, ".gitignore", true);
 upsertIgnoreFile(

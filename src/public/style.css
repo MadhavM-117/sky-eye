@@ -72,6 +72,8 @@ header a { color: var(--fg); text-decoration: none; }
   line-height: 18px;
   align-self: flex-start;
   border: 1px solid color-mix(in lab, var(--bg) 75%, currentColor);
+  color: var(--muted); /* neutral default — canonical marks override below;
+                         custom-classifier names (§16.5) render muted */
 }
 .sky-mark-focus { color: var(--mark-focus); }
 .sky-mark-glance { color: var(--mark-glance); }

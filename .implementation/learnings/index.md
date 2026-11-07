@@ -13,3 +13,4 @@ the index is the lookup table, files are read on demand.
 
 - chapter-model.md — Chapter shape (multi-file slices), session load/create
   paths, frontend diff-instance keys
+- config.md — config.json loaders are per-concern (module owns its keys)

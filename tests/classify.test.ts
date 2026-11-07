@@ -103,3 +103,29 @@ test("classifyChapter fills attention across all slices; withAttention copies", 
   assert.equal(filled.attention[1].mark, "safe");
   assert.equal(chapter.attention.length, 0); // original untouched
 });
+
+// config globs (spec §16.4): built-in buckets first, config globs append
+import { globToRegExp } from "../src/classify.ts";
+import type { ClassifyRules } from "../src/types.ts";
+
+const rules: ClassifyRules = {
+  safePaths: ["vendor/*", "*.generated.ts"],
+  focusPaths: ["db/migrations/*"],
+};
+
+test("config safePaths/focusPaths extend the built-in buckets", () => {
+  // built-in safe still safe; config safe also safe; built-in focus beats config safe
+  assert.equal(classifySlice(slice("vendor/lib.js", hunk([["add", "1", "await x()"]])), rules)[0].mark, "safe");
+  assert.equal(classifySlice(slice("src/x.generated.ts", hunk([["add", "1", "x"]])), rules)[0].mark, "safe");
+  // built-in focus path + config focus path both focus
+  assert.equal(classifySlice(slice("db/migrations/001.sql", hunk([["add", "1", "INSERT t"]])), rules)[0].mark, "focus");
+  assert.equal(classifySlice(slice("src/auth/login.ts", hunk([["add", "1", "return"]])), rules)[0].mark, "focus");
+});
+
+test("globs anchor the full path; no rules → default classification", () => {
+  assert.equal(globToRegExp("vendor/*").test("a/vendor/lib.js"), false);
+  assert.equal(globToRegExp("*.min.js").test("dist/bundle.min.js"), true);
+  assert.equal(globToRegExp("vendor/*").test("vendor/lib.js"), true);
+  // without rules, vendor paths classify by content
+  assert.equal(classifySlice(slice("vendor/lib.js", hunk([["add", "1", "x = y;"]])))[0].mark, "glance");
+});

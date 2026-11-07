@@ -4,12 +4,10 @@
 // session for git (commit ids break) — and the remap pass re-anchors
 // comments onto the rebuilt chapters.
 import { run, tryRun, validateRef, ApiError } from "./cli.ts";
-import { buildDiff, diffDigest, parseUnifiedDiff } from "./diff.ts";
-import { chunk, loadConfig } from "./chunker.ts";
-import { withAttention } from "./classify.ts";
+import { buildDiff, diffDigest } from "./diff.ts";
 import { captureAnchor } from "./anchors.ts";
 import { readFileAt } from "./tree.ts";
-import { persistSession } from "./store.ts";
+import { chaptersFromDiff, persistSession } from "./store.ts";
 import type { Anchor, Chapter, Comment, Session } from "./types.ts";
 
 // ---- staleness detection (spec §13.1) ---------------------------------
@@ -190,7 +188,7 @@ export async function refreshSession(
     const diffText = await buildDiff(root, kind, session.base, session.head);
     const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
     session.chapters = carryNarratives(
-      chunk(parseUnifiedDiff(diffText), loadConfig(root)).map(withAttention),
+      await chaptersFromDiff(root, diffText, { base: session.base, head: session.head }),
       oldChapters,
     );
     session.diffDigest = diffDigest(diffText);
@@ -234,7 +232,7 @@ async function createSuccessor(
   };
   const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
   successor.chapters = carryNarratives(
-    chunk(parseUnifiedDiff(diffText), loadConfig(root)).map(withAttention),
+    await chaptersFromDiff(root, diffText, { base: session.base, head: newHead }),
     oldChapters,
   );
   await remapComments(root, kind, successor);
