@@ -494,7 +494,8 @@ git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
 `narrate` / `classify` (`apiKey`, `model`, `baseUrl`, `provider`, plus
 `command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
 (classifier pass: `command` (exec hook), or built-in backends — `builtin:
-"jev"` + `model` via OpenRouter — plus `apiKey` (falls back to
+"openrouter"` + `model` (e.g. typesafe/jev-1.14) via OpenRouter — plus
+`apiKey` (falls back to
 `OPENROUTER_API_KEY` env, then the llm `defaults` key), `baseUrl`,
 `instructions`, and `criteria` (mark NAME → criteria description; keys are
 the mark vocabulary, default = the rules buckets) — §16.5), and
@@ -555,9 +556,11 @@ changed lines in; sparse `marks` out, overriding rules marks per
 `(file, side, line)` with `markSource: "custom"`; unmarked lines keep rules
 marks. Invalid entries are dropped.
 
-**Built-in backends** — when `classifier.builtin: "jev"` (+ `model`) is
-set, sky-eye itself classifies via typesafe's jev decision model on
-OpenRouter (`POST {baseUrl:-https://openrouter.ai/api}/alpha/decisions`):
+**Built-in backends** — when `classifier.builtin: "openrouter"` (+
+`model`) is set, sky-eye itself classifies via **OpenRouter's
+decision-model API** (`POST
+{baseUrl:-https://openrouter.ai/api}/alpha/decisions`); any model served by
+it works — out of the box: typesafe's **jev** (`typesafe/jev-1.14`),
 one request per rebuild, one `choice` question per changed line, criteria =
 the configured `criteria` map (mark names = keys, descriptions = values;
 default = the rules buckets), diff rendered as `state`. API key: `apiKey` →
@@ -706,10 +709,13 @@ demo repo with a scripted classifier → session creation shows
 `markSource: "custom"` marks; broken classifier → rules fallback (or
 cleared with `fallback:false`); `debug-classify` prints the transcript.
 
-**M5.2 — Built-in classifier (jev/OpenRouter).** Deliver: `classifier`
-config built-in branch (`builtin`/`model`/`apiKey`/`baseUrl`/`instructions`/
-`criteria`), jev backend (`jev.ts`) speaking OpenRouter's decision API,
-backend-shared fallback/log/debug semantics. *Accept:* jev + key config →
+**M5.2 — Built-in classifier (OpenRouter decision API).** Deliver:
+`classifier` config built-in branch
+(`builtin`/`model`/`apiKey`/`baseUrl`/`instructions`/`criteria`), the
+OpenRouter decision backend (`decisions.ts`) — jev
+(`typesafe/jev-1.14`) supported out of the box,
+backend-shared fallback/log/debug semantics. *Accept:* openrouter + key
+config →
 per-line AI marks at session creation with user-chosen mark names/criteria;
 missing key or HTTP failure → rules fallback (or cleared with
 `fallback:false`); run in `classifier.log`; `debug-classify` prints the

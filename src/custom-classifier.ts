@@ -1,7 +1,8 @@
 // Classifier pass (spec §16.5): runs at every chapter rebuild. Two backends
 // share one merge/fallback/log path — the exec hook (`classifier.command`:
 // JSON request on stdin, sparse marks JSON on stdout) and built-in backends
-// (`classifier.builtin`, first: jev via OpenRouter — src/jev.ts). Marks are
+// (`classifier.builtin`, first: OpenRouter's decision-model API via
+// src/decisions.ts, model e.g. typesafe/jev-1.14). Marks are
 // merged per line coordinate over the built-in rules pass — unmarked lines
 // keep their rules marks. A failed run (non-zero exit, timeout, HTTP error,
 // malformed output) keeps rules marks unless `fallback: false`, in which
@@ -9,7 +10,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { jevClassify } from "./jev.ts";
+import { decisionsClassify } from "./decisions.ts";
 import type { Chapter, ClassifierConfig, ClassifyRules, LineMark } from "./types.ts";
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -31,10 +32,10 @@ export function loadClassifierConfig(root: string): ClassifierConfig | undefined
         debug: c.debug === true,
       };
     }
-    // built-in backends; jev needs a model — anything else → no pass (rules only)
-    if (c?.builtin === "jev" && typeof c.model === "string" && c.model.trim()) {
+    // built-in backends; the OpenRouter backend needs a model — anything else → no pass (rules only)
+    if (c?.builtin === "openrouter" && typeof c.model === "string" && c.model.trim()) {
       return {
-        builtin: "jev",
+        builtin: "openrouter",
         model: c.model,
         apiKey: typeof c.apiKey === "string" ? c.apiKey : undefined,
         baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : undefined,
@@ -53,7 +54,7 @@ export function loadClassifierConfig(root: string): ClassifierConfig | undefined
 
 // mark NAME → criteria description; keys must be valid mark names (same
 // regex the exec protocol enforces) with non-empty descriptions — invalid
-// entries are dropped, none left → defaults (jev.ts DEFAULT_CRITERIA)
+// entries are dropped, none left → defaults (decisions.ts DEFAULT_CRITERIA)
 function validCriteria(raw: unknown): Record<string, string> | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const out: Record<string, string> = {};
@@ -156,7 +157,7 @@ export function parseClassifierResponse(raw: string, expected: Set<string>): Lin
 
 // coordinates of every changed line in the request we sent — parsed back
 // out of the request JSON so spawnClassifier doesn't need chapters threaded
-// through (shared with the built-in jev backend)
+// through (shared with the built-in OpenRouter backend)
 export function expectedCoordinates(request: string): Set<string> {
   const parsed = JSON.parse(request) as {
     chapters: { files: { file: string; hunks: { lines: { side: string; line: number }[] }[] }[] }[];
@@ -251,7 +252,7 @@ function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): v
       JSON.stringify(
         {
           time: new Date().toISOString(),
-          command: config.command ?? `jev:${config.model}`, // backend label
+          command: config.command ?? `openrouter:${config.model}`, // backend label
           durationMs: run.durationMs,
           exitCode: run.exitCode,
           failed: run.failed,
@@ -272,7 +273,7 @@ function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): v
 
 // Mutates the freshly-built chapters' attention in place per the merge
 // semantics. No-op without config; rules marks are the fallback layer.
-// Backend selection: exec hook (`command`) wins, else built-in (jev).
+// Backend selection: exec hook (`command`) wins, else built-in (OpenRouter).
 export async function applyClassifier(
   root: string,
   base: string,
@@ -284,7 +285,7 @@ export async function applyClassifier(
   const request = classifierRequest(root, base, head, chapters);
   const run = config.command
     ? await spawnClassifier(config, root, request)
-    : await jevClassify(config, root, request);
+    : await decisionsClassify(config, root, request);
   writeLog(root, config, run);
   if (run.failed) {
     if (config.fallback) return; // keep the rules marks

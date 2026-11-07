@@ -5,17 +5,17 @@ import os from "node:os";
 import path from "node:path";
 import {
   DEFAULT_CRITERIA,
-  JevError,
-  jevClassify,
-  jevRequestBody,
-  parseJevResponse,
+  DecisionsError,
+  decisionsClassify,
+  decisionsRequestBody,
+  parseDecisionsResponse,
   resolveApiKey,
-} from "../src/jev.ts";
+} from "../src/decisions.ts";
 import { applyClassifier, classifierRequest, loadClassifierConfig } from "../src/custom-classifier.ts";
 import type { Chapter, ClassifierConfig, Hunk } from "../src/types.ts";
 
 const withConfig = (body: unknown): string => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jev-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dec-"));
   fs.mkdirSync(path.join(dir, ".sky-watch"), { recursive: true });
   if (body !== null)
     fs.writeFileSync(path.join(dir, ".sky-watch", "config.json"), JSON.stringify(body));
@@ -39,38 +39,38 @@ const chapter: Chapter = {
   attention: [],
 };
 const request = (chapters: Chapter[] = [chapter]) => classifierRequest("/repo", "b1", "h1", chapters);
-const jevCfg = (extra: object = {}): ClassifierConfig => ({ builtin: "jev", model: "typesafe/jev-1.14", ...extra });
+const decisionsCfg = (extra: object = {}): ClassifierConfig => ({ builtin: "openrouter", model: "typesafe/jev-1.14", ...extra });
 
 // ---- config ----------------------------------------------------------------
 
-test("loadClassifierConfig: command wins over builtin; jev needs a model", () => {
-  assert.equal(loadClassifierConfig(withConfig({ classifier: { command: "x", builtin: "jev", model: "m" } }))?.command, "x");
-  assert.equal(loadClassifierConfig(withConfig({ classifier: { builtin: "jev" } })), undefined);
+test("loadClassifierConfig: command wins over builtin; the OpenRouter backend needs a model", () => {
+  assert.equal(loadClassifierConfig(withConfig({ classifier: { command: "x", builtin: "openrouter", model: "m" } }))?.command, "x");
+  assert.equal(loadClassifierConfig(withConfig({ classifier: { builtin: "openrouter" } })), undefined);
   assert.equal(loadClassifierConfig(withConfig({ classifier: { builtin: "other", model: "m" } })), undefined);
 });
 
-test("loadClassifierConfig: jev mode fills defaults, criteria validated", () => {
-  const cfg = loadClassifierConfig(withConfig({ classifier: jevCfg({ criteria: { skim: "quick", "bad name": "x", empty: "  " } }) }))!;
-  assert.equal(cfg.builtin, "jev");
+test("loadClassifierConfig: decision backend fills defaults, criteria validated", () => {
+  const cfg = loadClassifierConfig(withConfig({ classifier: decisionsCfg({ criteria: { skim: "quick", "bad name": "x", empty: "  " } }) }))!;
+  assert.equal(cfg.builtin, "openrouter");
   assert.equal(cfg.model, "typesafe/jev-1.14");
   assert.equal(cfg.timeoutMs, 30_000);
   assert.equal(cfg.fallback, true);
   assert.deepEqual(cfg.criteria, { skim: "quick" }); // invalid entries dropped
-  assert.equal(loadClassifierConfig(withConfig({ classifier: jevCfg({ criteria: { "bad name": "x" } }) }))?.criteria, undefined);
+  assert.equal(loadClassifierConfig(withConfig({ classifier: decisionsCfg({ criteria: { "bad name": "x" } }) }))?.criteria, undefined);
 });
 
 test("resolveApiKey: classifier key > env > llm defaults", () => {
-  const cfg = loadClassifierConfig(withConfig({ classifier: jevCfg(), defaults: { apiKey: "llm-key" } }))!;
-  assert.equal(resolveApiKey(cfg, withConfig({ classifier: jevCfg(), defaults: { apiKey: "llm-key" } })), "llm-key");
-  const noKey = withConfig({ classifier: jevCfg() });
-  assert.equal(resolveApiKey(jevCfg() as never, noKey), process.env.OPENROUTER_API_KEY);
+  const cfg = loadClassifierConfig(withConfig({ classifier: decisionsCfg(), defaults: { apiKey: "llm-key" } }))!;
+  assert.equal(resolveApiKey(cfg, withConfig({ classifier: decisionsCfg(), defaults: { apiKey: "llm-key" } })), "llm-key");
+  const noKey = withConfig({ classifier: decisionsCfg() });
+  assert.equal(resolveApiKey(decisionsCfg()  as never, noKey), process.env.OPENROUTER_API_KEY);
 });
 
 // ---- request building -------------------------------------------------------
 
-test("jevRequestBody: one choice question per changed line, criteria attached", () => {
-  const cfg = jevCfg({ criteria: { skim: "quick", hotspot: "read fully" } }) as never;
-  const { body, keyMap } = jevRequestBody(request(), cfg);
+test("decisionsRequestBody: one choice question per changed line, criteria attached", () => {
+  const cfg = decisionsCfg({ criteria: { skim: "quick", hotspot: "read fully" } })  as never;
+  const { body, keyMap } = decisionsRequestBody(request(), cfg);
   const parsed = JSON.parse(body) as { model: string; state: string[]; questions: Record<any, any> };
   assert.equal(parsed.model, "typesafe/jev-1.14");
   assert.equal(Object.keys(parsed.questions).length, 2); // del + add lines
@@ -84,8 +84,8 @@ test("jevRequestBody: one choice question per changed line, criteria attached", 
   assert.deepEqual(keyMap.get("q1"), { file: "src/auth.ts", side: "new", line: 2 });
 });
 
-test("jevRequestBody: default criteria/instructions when not configured", () => {
-  const { body } = jevRequestBody(request(), jevCfg() as never);
+test("decisionsRequestBody: default criteria/instructions when not configured", () => {
+  const { body } = decisionsRequestBody(request(), decisionsCfg()  as never);
   const q = (JSON.parse(body) as { questions: Record<any, any> }).questions["q0"];
   assert.deepEqual(q.criteria, DEFAULT_CRITERIA);
   assert.match(q.instructions as string, /Which attention mark/);
@@ -102,9 +102,9 @@ const expectedOf = (req: string) => {
   return set;
 };
 
-test("parseJevResponse: answers → marks; wrong vocabulary and unknown keys skipped", () => {
+test("parseDecisionsResponse: answers → marks; wrong vocabulary and unknown keys skipped", () => {
   const req = request();
-  const { keyMap } = jevRequestBody(req, jevCfg() as never);
+  const { keyMap } = decisionsRequestBody(req, decisionsCfg()  as never);
   const raw = JSON.stringify({
     answers: {
       q0: { type: "choice", choice: "safe" },
@@ -113,24 +113,24 @@ test("parseJevResponse: answers → marks; wrong vocabulary and unknown keys ski
       q0b: { type: "choice", choice: "not-a-mark" }, // not in vocabulary — and dead key anyway
     },
   });
-  const marks = parseJevResponse(raw, DEFAULT_CRITERIA, expectedOf(req), keyMap);
+  const marks = parseDecisionsResponse(raw, DEFAULT_CRITERIA, expectedOf(req), keyMap);
   assert.deepEqual(marks, [
     { file: "src/auth.ts", side: "old", line: 1, mark: "safe", markSource: "custom" },
     { file: "src/auth.ts", side: "new", line: 2, mark: "focus", markSource: "custom" },
   ]);
 });
 
-test("parseJevResponse: malformed envelope throws", () => {
-  assert.throws(() => parseJevResponse("{}", DEFAULT_CRITERIA, new Set(), new Map()), JevError);
-  assert.throws(() => parseJevResponse("not json", DEFAULT_CRITERIA, new Set(), new Map()), JevError);
+test("parseDecisionsResponse: malformed envelope throws", () => {
+  assert.throws(() => parseDecisionsResponse("{}", DEFAULT_CRITERIA, new Set(), new Map()), DecisionsError);
+  assert.throws(() => parseDecisionsResponse("not json", DEFAULT_CRITERIA, new Set(), new Map()), DecisionsError);
 });
 
 // ---- the HTTP boundary --------------------------------------------------------
 
-test("jevClassify: ok → marks; custom names survive", async () => {
-  const cfg = { ...jevCfg({ criteria: { skim: "quick", hotspot: "read fully" } }), apiKey: "cfg-key" };
+test("decisionsClassify: ok → marks; custom names survive", async () => {
+  const cfg = { ...decisionsCfg({ criteria: { skim: "quick", hotspot: "read fully" } }), apiKey: "cfg-key" };
   const req = request();
-  const { keyMap } = jevRequestBody(req, cfg);
+  const { keyMap } = decisionsRequestBody(req, cfg);
   const calls: string[] = [];
   const fakeFetch = async (url: string, init: RequestInit) => {
     calls.push(url);
@@ -142,7 +142,7 @@ test("jevClassify: ok → marks; custom names survive", async () => {
     }), { status: 200 });
   };
   const root = withConfig({ classifier: { ...cfg, apiKey: "cfg-key" } });
-  const run = await jevClassify(cfg, root, req, fakeFetch as typeof fetch);
+  const run = await decisionsClassify(cfg, root, req, fakeFetch as typeof fetch);
   assert.equal(run.failed, false);
   assert.deepEqual(run.marks, [
     { file: "src/auth.ts", side: "old", line: 1, mark: "skim", markSource: "custom" },
@@ -151,20 +151,20 @@ test("jevClassify: ok → marks; custom names survive", async () => {
   assert.equal(calls.length, 1);
 });
 
-test("jevClassify: HTTP error and missing key degrade to a failed run (no throw)", async () => {
-  const run = await jevClassify({ ...jevCfg(), apiKey: "cfg-key" } as never, withConfig(null), request(),
+test("decisionsClassify: HTTP error and missing key degrade to a failed run (no throw)", async () => {
+  const run = await decisionsClassify({ ...decisionsCfg(), apiKey: "cfg-key" }   as never, withConfig(null), request(),
     async () => new Response("nope", { status: 502 }) as Response);
   assert.equal(run.failed, true);
   assert.equal(run.error, "HTTP 502");
-  const noKey = await jevClassify(jevCfg() as never, withConfig({ classifier: jevCfg() }), request());
+  const noKey = await decisionsClassify(decisionsCfg()   as never, withConfig({ classifier: decisionsCfg() }), request());
   assert.equal(noKey.failed, true);
   assert.match(noKey.error!, /no api key/);
 });
 
 // ---- merge through applyClassifier (shared path, no network) -------------------
 
-test("applyClassifier: jev failure with fallback keeps rules marks; no config → no-op", async () => {
-  const root = withConfig({ classifier: jevCfg() }); // no key anywhere → failed run
+test("applyClassifier: decision-backend failure with fallback keeps rules marks; no config → no-op", async () => {
+  const root = withConfig({ classifier: decisionsCfg() }); // no key anywhere → failed run
   const chapters = [{ ...chapter, attention: [{ file: "src/auth.ts", side: "new" as const, line: 2, mark: "focus", markSource: "rules" as const }] }];
   await applyClassifier(root, "b1", "h1", chapters);
   assert.equal(chapters[0].attention[0].mark, "focus"); // rules marks survive

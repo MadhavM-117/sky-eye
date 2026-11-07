@@ -1,4 +1,4 @@
-// Built-in jev classifier backend (spec §16.5 built-in backends): one
+// Built-in OpenRouter decision-model classifier backend (spec §16.5): one
 // blocking HTTP request per rebuild to OpenRouter's decision API
 // (`POST {baseUrl}/alpha/decisions`). Every changed line becomes one
 // `choice` question whose criteria are the configured mark map — keys are
@@ -14,7 +14,7 @@ import { expectedCoordinates, type ClassifierRun } from "./custom-classifier.ts"
 import { loadLlmConfig } from "./llm.ts";
 import type { ClassifierConfig, LineMark } from "./types.ts";
 
-export const JEVR_DEFAULT_BASE = "https://openrouter.ai/api";
+export const DECISIONS_DEFAULT_BASE = "https://openrouter.ai/api";
 
 // §16.4 buckets — the default vocabulary when `criteria` is not configured
 export const DEFAULT_CRITERIA: Record<string, string> = {
@@ -45,8 +45,8 @@ interface ProtocolRequest {
   chapters: { id: string; files: { file: string; status: string; hunks: { lines: ProtocolLine[] }[] }[] }[];
 }
 
-// classifier protocol request → jev decisions body + the q<N>→coordinate map
-export function jevRequestBody(
+// classifier protocol request → decision-API body + the q<N>→coordinate map
+export function decisionsRequestBody(
   request: string,
   cfg: ClassifierConfig,
 ): { body: string; keyMap: Map<string, { file: string; side: "old" | "new"; line: number }> } {
@@ -81,13 +81,13 @@ export function jevRequestBody(
 
 // ---- response parsing ------------------------------------------------------
 
-export class JevError extends Error {}
+export class DecisionsError extends Error {}
 
 // envelope (probed 2025: `{ answers: { <qKey>: { choice: "<criteriaKey>", … } } }`).
 // The chosen criteria key must be in the configured vocabulary and the
 // coordinate must be one the request actually carried — anything else is
 // skipped; a missing/malformed envelope throws (caller marks the run failed).
-export function parseJevResponse(
+export function parseDecisionsResponse(
   raw: string,
   criteria: Record<string, string>,
   expected: Set<string>,
@@ -97,10 +97,10 @@ export function parseJevResponse(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new JevError("response is not valid JSON");
+    throw new DecisionsError("response is not valid JSON");
   }
   const answers = (parsed as { answers?: Record<string, unknown> })?.answers;
-  if (!answers || typeof answers !== "object") throw new JevError("response has no answers object");
+  if (!answers || typeof answers !== "object") throw new DecisionsError("response has no answers object");
   const out: LineMark[] = [];
   for (const [key, answer] of Object.entries(answers)) {
     const coord = keyMap.get(key);
@@ -114,7 +114,7 @@ export function parseJevResponse(
 
 // ---- the one boundary where HTTP runs --------------------------------------
 
-export async function jevClassify(
+export async function decisionsClassify(
   cfg: ClassifierConfig,
   root: string,
   request: string,
@@ -137,8 +137,8 @@ export async function jevClassify(
     return run;
   }
   try {
-    const { body, keyMap } = jevRequestBody(request, cfg);
-    const res = await fetchImpl(`${cfg.baseUrl ?? JEVR_DEFAULT_BASE}/alpha/decisions`, {
+    const { body, keyMap } = decisionsRequestBody(request, cfg);
+    const res = await fetchImpl(`${cfg.baseUrl ?? DECISIONS_DEFAULT_BASE}/alpha/decisions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body,
@@ -147,7 +147,7 @@ export async function jevClassify(
     run.response = await res.text();
     if (!res.ok) run.error = `HTTP ${res.status}`;
     else
-      run.marks = parseJevResponse(
+      run.marks = parseDecisionsResponse(
         run.response,
         cfg.criteria ?? DEFAULT_CRITERIA,
         expectedCoordinates(request),

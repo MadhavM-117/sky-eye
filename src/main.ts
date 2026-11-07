@@ -10,7 +10,7 @@ import {
   loadClassifierConfig,
   spawnClassifier,
 } from "./custom-classifier.ts";
-import { JEVR_DEFAULT_BASE, jevClassify } from "./jev.ts";
+import { DECISIONS_DEFAULT_BASE, decisionsClassify } from "./decisions.ts";
 import { loadSession } from "./store.ts";
 import "./routes.ts";
 
@@ -51,7 +51,7 @@ if (process.argv[2] === "debug-classify") {
   const request = classifierRequest(root, session.base, session.head, session.chapters);
   const run = config.command
     ? await spawnClassifier({ ...config, debug: true }, root, request)
-    : await jevClassify(config, root, request);
+    : await decisionsClassify(config, root, request);
   const overridden = run.failed ? 0 : session.chapters.reduce(
     (n, c) => n + c.attention.filter((m) => run.marks.some((k) =>
       k.file === m.file && k.side === m.side && k.line === m.line)).length,
@@ -60,7 +60,7 @@ if (process.argv[2] === "debug-classify") {
   const rulesMarks = session.chapters.reduce((n, c) => n + c.attention.length, 0);
   console.log(
     [
-      `backend:  ${config.command ?? `jev:${config.model} @ ${config.baseUrl ?? JEVR_DEFAULT_BASE}`}`,
+      `backend:  ${config.command ?? `openrouter:${config.model} @ ${config.baseUrl ?? DECISIONS_DEFAULT_BASE}`}`,
       `duration: ${run.durationMs}ms, exit: ${run.exitCode}${run.failed ? ` — FAILED: ${run.error}` : ""}`,
       `marks:    ${run.marks.length} custom applied, ${rulesMarks - overridden} rules kept`,
       run.stderr ? `--- stderr ---\n${run.stderr.trimEnd()}` : "",

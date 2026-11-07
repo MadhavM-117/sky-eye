@@ -1,7 +1,10 @@
-# Jev classifier backend
+# OpenRouter decision-model API (built-in classifier backend)
 
-- OpenRouter decisions API (`POST https://openrouter.ai/api/alpha/decisions`):
-  answers come back as `{ answers: { <qKey>: { type, choice, probabilities,
+- The decisions endpoint is OpenRouter's, not the model's: `POST
+  https://openrouter.ai/api/alpha/decisions`. jev (`typesafe/jev-1.14`) is
+  just a model served by it — name the backend after the API
+  (`builtin: "openrouter"`, `src/decisions.ts`), pick models via `model`.
+- Response envelope: `{ answers: { <qKey>: { type, choice, probabilities,
   confidence } } }` — the chosen criteria key is at `.choice`. `state` is a
   string list, `questions` an object keyed however you like (`q<N>` + side
   map avoids odd file names round-tripping through keys).
