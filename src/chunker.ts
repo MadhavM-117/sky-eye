@@ -1,5 +1,5 @@
-// Hunks → chapters (spec §8). M1: file boundary + size rules; funcname context
-// and keep-together tuning arrive in task 004 via the shouldSplit predicate.
+// Hunks → chapters (spec §8): file boundary, funcname boundaries (§8.2),
+// keep-together up to maxLines (§8.4), distance fallback when no header context.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,14 +21,32 @@ export function loadConfig(root: string): ReviewConfig {
 export const changedLines = (hunk: Hunk) =>
   hunk.lines.filter((l) => l.type !== "ctx").length;
 
-// M1 splits on file change and size only. Task 004 adds function-context and
-// keep-together rules here.
+// funcname context from the raw header (git and jj both emit it, spec §22.1):
+// "@@ -1,9 +1,10 @@ fn a() {" → "fn a() {". Git truncates long contexts — the
+// trimmed string is still a stable identity for equality.
+export function funcOf(hunk: Hunk): string | null {
+  const m = hunk.header?.match(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@ ?(.*)$/);
+  return m && m[1] ? m[1] : null;
+}
+
+// §8.2: a new chapter starts when the function context changes, or (with no
+// context available — rebuilt/fixture hunks) on size or >30 unchanged lines
+// between hunks. §8.4: with the SAME context, keep-together wins — hunks stay
+// together past targetLines, up to the maxLines hard max.
 function shouldSplit(
-  _prev: Hunk,
-  _next: Hunk,
-  _sameFile: boolean,
+  prev: Hunk,
+  next: Hunk,
+  projected: number,
+  config: ReviewConfig,
 ): boolean {
-  return false;
+  const a = funcOf(prev);
+  const b = funcOf(next);
+  if (a !== null && a === b) return projected > config.maxLines;
+  if (a !== null && b !== null) return true; // different funcnames
+  return (
+    projected > config.targetLines ||
+    next.newStart - (prev.newStart + prev.newLines) > 30
+  );
 }
 
 export function chunk(
@@ -59,8 +77,12 @@ export function chunk(
       const size = changedLines(hunk);
       if (
         current &&
-        (current.lines + size > config.targetLines ||
-          shouldSplit(current.hunks.at(-1)!, hunk, true))
+        shouldSplit(
+          current.hunks.at(-1)!,
+          hunk,
+          current.lines + size,
+          config,
+        )
       ) {
         flush();
       }

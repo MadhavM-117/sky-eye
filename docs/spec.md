@@ -540,10 +540,9 @@ back into API calls. The only module that knows pierre's types.
 
 Data flow: `api.js` wraps fetch (adds `X-Sky-Eye` on non-GET, propagates
 409s); views re-render from fetched session JSON; no client state worth
-syncing. Diff rendering is the perf-sensitive path — chapters render lazily
-on first expansion if the session has >N chapters (N ≈ 50; see Open
-Questions); `@pierre/diffs` ships virtualized file components as the
-down-payment on large diffs.
+syncing. Diff rendering is the perf-sensitive path — chaptering caps each
+`FileDiff` at `maxLines` changed lines (§8, §22.5), which keeps renders small
+without lazy expansion; `VirtualizedFileDiff` is the standing upgrade path.
 
 ## 19. Syntax highlighting (D§3 row 1a, D§6b)
 
@@ -652,10 +651,12 @@ milestone starts:
    *content*, not line ranges — cheap to change now, expensive later.
 4. **Default port & configurability.** 4800 assumed from U§1.1's example.
    Should there be a `--port` flag / env var, or is scan-upward enough?
-5. **Large diffs.** No pagination anywhere. Chapters render lazily (§18);
-   `@pierre/diffs` ships `VirtualizedFileDiff`/`VirtualizedFile`, so per-file
-   virtualization is a component swap, not a build effort. Decide at M4
-   whether the accordion needs it or lazy expansion is enough.
+5. **Large diffs.** RESOLVED at M4: chaptering *is* the virtualization —
+   each chapter renders as one pierre `FileDiff` instance capped at `maxLines`
+   (200) changed lines, so no single render is ever huge. No `FileDiff` →
+   `VirtualizedFileDiff` swap and no lazy expansion in v1; sessions with many
+   chapters render eagerly. Upgrade path if a real diff is observed crawling:
+   swap the component in the adapter (same input shape), one line.
 6. **Base-side semantics for user-picked bases.** Default base uses
    merge-base semantics (`base...head`). When the user picks an arbitrary
    commit as base, is that also three-dot, or literal two-dot? Three-dot

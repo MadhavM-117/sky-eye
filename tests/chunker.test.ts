@@ -3,14 +3,31 @@ import assert from "node:assert/strict";
 import { chunk, chapterId, changedLines, loadConfig } from "../src/chunker.ts";
 import type { FileDiff, Hunk } from "../src/types.ts";
 
-function hunk(oldStart: number, newStart: number, adds: number, dels: number, ctx = 1): Hunk {
+function hunk(
+  oldStart: number,
+  newStart: number,
+  adds: number,
+  dels: number,
+  ctx = 1,
+  header?: string,
+): Hunk {
   const lines = [];
   for (let i = 0; i < ctx; i++) lines.push({ type: "ctx" as const, oldLine: 1, newLine: 1, text: "c" });
   for (let i = 0; i < dels; i++) lines.push({ type: "del" as const, oldLine: 2, text: "-d" });
   for (let i = 0; i < adds; i++) lines.push({ type: "add" as const, newLine: 3, text: "+a" });
   for (let i = 0; i < ctx; i++) lines.push({ type: "ctx" as const, oldLine: 4, newLine: 4, text: "c" });
-  return { oldStart, newStart, oldLines: dels + ctx * 2, newLines: adds + ctx * 2, lines };
+  return { header, oldStart, newStart, oldLines: dels + ctx * 2, newLines: adds + ctx * 2, lines };
 }
+
+const withFn = (h: Hunk, fn: string) => ({
+  ...h,
+  header: `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@ ${fn}`,
+});
+
+const funcOf = (h: Hunk) => {
+  const m = h.header?.match(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@ ?(.*)$/);
+  return m && m[1] ? m[1] : null;
+};
 
 function file(path: string, hunks: Hunk[], status: "modified" | "added" | "deleted" = "modified"): FileDiff {
   return { path, oldPath: path, status, hunks, binary: false };
@@ -85,6 +102,58 @@ test("chapters are ordered by path", () => {
     CFG,
   );
   assert.deepEqual(chapters.map((c) => c.file), ["a.ts", "z.ts"]);
+});
+
+test("funcOf extracts git/jj funcname context", () => {
+  assert.equal(funcOf(withFn(hunk(1, 1, 1, 0), "fn a() {")), "fn a() {");
+  assert.equal(funcOf(withFn(hunk(1, 1, 1, 0), "static void main(...)")), "static void main(...)");
+  assert.equal(funcOf(hunk(1, 1, 1, 0)), null);
+});
+
+test("function context change splits even small hunks (§8.2)", () => {
+  const chapters = chunk(
+    [file("a.ts", [withFn(hunk(1, 1, 3, 0), "fn a() {"), withFn(hunk(10, 10, 3, 0), "fn b() {")])],
+    CFG,
+  );
+  assert.equal(chapters.length, 2);
+});
+
+test("same function context keeps together past targetLines (§8.4)", () => {
+  // 30 + 30 changed lines, target 10, max 200 → one chapter
+  const chapters = chunk(
+    [file("a.ts", [withFn(hunk(1, 1, 30, 0), "fn a() {"), withFn(hunk(100, 100, 30, 0), "fn a() {")])],
+    CFG,
+  );
+  assert.equal(chapters.length, 1);
+  assert.equal(chapters[0].hunks.length, 2);
+});
+
+test("keep-together stops at the maxLines hard max (§8.4)", () => {
+  // three 80-line hunks in one function: 160 fits max 200, 240 does not
+  const chapters = chunk(
+    [file("a.ts", [
+      withFn(hunk(1, 1, 80, 0), "fn a() {"),
+      withFn(hunk(200, 200, 80, 0), "fn a() {"),
+      withFn(hunk(400, 400, 80, 0), "fn a() {"),
+    ])],
+    CFG,
+  );
+  assert.equal(chapters.length, 2);
+  assert.equal(changedLines(chapters[0].hunks[1]), 80);
+});
+
+test("distance fallback splits far-apart context-less hunks (§8.2)", () => {
+  // no header; 40 unchanged lines between hunks → split despite tiny size
+  const chapters = chunk(
+    [file("a.ts", [hunk(1, 1, 2, 0), hunk(45, 45, 2, 0)])],
+    CFG,
+  );
+  assert.equal(chapters.length, 2);
+});
+
+test("no context: targetLines still splits (keep-together needs a context)", () => {
+  const chapters = chunk([file("a.ts", [hunk(1, 1, 6, 0), hunk(10, 10, 6, 0)])], CFG);
+  assert.equal(chapters.length, 2);
 });
 
 test("loadConfig falls back to defaults", () => {
