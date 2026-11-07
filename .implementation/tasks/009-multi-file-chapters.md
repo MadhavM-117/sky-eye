@@ -1,4 +1,4 @@
-# 010 — Multi-file chapters
+# 009 — Multi-file chapters — **done**
 
 **Goal:** a chapter can encompass hunks from several files; the file-boundary
 split rule is removed from the chunker. Comments, anchors, remap, deep links
@@ -20,3 +20,15 @@ attention marks) must set it when marking lines. 011/012 (export/import,
 narratives) inherit the model; 012's prompt will receive multi-file diffs.
 
 Spec: §8, §9.3, §12, §13.3; design.md D§3 row 2, D§4; ux.md U§3.2.
+
+**Result:** `Chapter.files[]` slices (one contiguous slice per file, path
+order); chapter id hashes all slices; chunker splits only on funcname change
+within a file, >30-line distance, or size — small files merge into one
+chapter. Comments validate against slices; remap checks visibility per
+`anchor.file` slice; legacy sessions count as absent on load **and** on the
+createSession exists-branch (both paths needed — see
+`.implementation/learnings/chapter-model.md`). Frontend: one pierre diff
+block per slice under the chapter head; composer/deep-link/triage keyed
+`chapterId\u0000file`. Verified live in `tmp/demo` (7 hunks → chapter 1
+spans config.yaml + README.md + service.py, rest split at function
+boundaries); comment on a non-first slice anchors correctly. 65/65 tests.
