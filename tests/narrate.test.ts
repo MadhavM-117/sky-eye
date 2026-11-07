@@ -10,6 +10,7 @@ import {
   chapterTitle,
   narrateUserPrompt,
   parseLlmResponse,
+  rerunAll,
   rerunChapter,
   sharedSystemPrompt,
 } from "../src/narrate.ts";
@@ -151,6 +152,37 @@ const adapter = (id: string, reply: (req: LlmRequest) => string) => ({
 });
 
 const root = () => fs.mkdtempSync(path.join(os.tmpdir(), "nar-"));
+
+test("rerunAll: one call per chapter, rules marks rebuilt first, one confirm gate (task 018)", async () => {
+  const s = session();
+  s.chapters[0].narrative = "human edit";
+  s.chapters[0].narrativeEdited = true;
+  let calls = 0;
+  const a = adapter("shared:1", () => JSON.stringify({ narrative: `n${++calls}`, marks: [] }));
+  // any edited narrative → one 409 for all chapters, before any call
+  await assert.rejects(
+    rerunAll(root(), "git", s, false, { narrate: a, classify: a }),
+    (e: ApiError) => e.status === 409 && (e.payload as { needsConfirm: boolean }).needsConfirm,
+  );
+  assert.equal(calls, 0);
+  const out = await rerunAll(root(), "git", s, true, { narrate: a, classify: a });
+  assert.equal(calls, 2); // every chapter narrated
+  assert.equal(out.chapters[0].narrative, "n1");
+  assert.equal(out.chapters[1].narrative, "n2");
+  // rules marks rebuilt before narrate: the fixture's custom/llm-mark state
+  // is machine-owned and re-derived from the hunks (narrate marks then
+  // overwrite "rules" entries only)
+  assert.ok(out.chapters[0].attention.every((m) => m.markSource === "rules" || m.markSource === "llm"));
+  assert.ok(out.updatedAt > 1); // persisted once
+});
+
+test("rerunAll: no adapters → rules marks still rebuilt, classifier-free", async () => {
+  const s = session();
+  s.chapters[0].attention = [{ file: "src/a.ts", side: "new", line: 11, mark: "safe", markSource: "custom" }];
+  const out = await rerunAll(root(), "git", s, false, {});
+  assert.ok(out.chapters[0].attention.every((m) => m.markSource === "rules"));
+  assert.ok(out.updatedAt > 1);
+});
 
 test("rerunChapter: no adapters → session unchanged", async () => {
   const s = session();

@@ -235,6 +235,7 @@ function renderSession(session, route = null) {
       <a class="explorer-link" href="#${esc(session.id)}/explorer//head">files</a>
       <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
       <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export">export</a>
+      <button id="rerun-all" title="re-generate marks + narratives for every chapter">regenerate</button>
       <button id="archive" title="move out of the session list (restorable from the first screen)">archive</button>
       <button id="delete-review" title="delete permanently">delete</button>
     </header>
@@ -571,6 +572,22 @@ function wireSession(session, route = null) {
       const chapter = current.chapters[Number(btn.dataset.i)];
       if (chapter) rerunChapterUi(chapter.id);
     };
+  });
+
+  // regenerate all (task 018, spec §16.6): one click re-runs rules marks,
+  // classifier and narratives for every chapter; one confirm covers all
+  // edited narratives (server 409s with needsConfirm otherwise)
+  document.getElementById("rerun-all")?.addEventListener("click", async () => {
+    const edited = current.chapters.some((c) => c.narrativeEdited);
+    if (edited && !confirm("regenerating overwrites your edited narratives — regenerate all?")) return;
+    try {
+      current = await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/rerun-all`, {
+        confirm: edited || undefined,
+      });
+      renderSession(current);
+    } catch (e) {
+      handleMutError(e);
+    }
   });
 
   // deep links (spec §17): scroll to + flash the target; retry because lazy

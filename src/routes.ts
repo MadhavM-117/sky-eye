@@ -19,7 +19,7 @@ import {
   unarchiveSession,
 } from "./store.ts";
 import { checkStale, refreshSession } from "./remap.ts";
-import { rerunChapter } from "./narrate.ts";
+import { rerunAll, rerunChapter } from "./narrate.ts";
 
 route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
 
@@ -98,6 +98,13 @@ route("POST", "/api/sessions/:id/rerun", async ({ root, kind, params, body }) =>
   const b = body as { chapterId?: string; confirm?: boolean };
   if (!b.chapterId) throw new ApiError(400, "chapterId is required");
   return rerunChapter(root, kind, loadSession(root, sessionId(params.id)), b.chapterId, b.confirm === true);
+});
+
+// rerun-all (task 018, spec §16.6): regenerate marks + narratives for every
+// chapter, in place on the stored diff; one confirm gate for edited narratives
+route("POST", "/api/sessions/:id/rerun-all", async ({ root, kind, params, body }) => {
+  const b = body as { confirm?: boolean };
+  return rerunAll(root, kind, loadSession(root, sessionId(params.id)), b.confirm === true);
 });
 
 // archive/delete (task 017, spec §10): archive moves the file into

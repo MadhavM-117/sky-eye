@@ -263,3 +263,16 @@ on an upgrade and the single place version-diff reviews. Corollaries:
   render a real split diff to HTML **in Node** to inspect row structure
   without a browser (used to verify the gutter selectors for 009; keep
   using this for any future row-internal decoration work).
+
+## Integration facts (learned at task 015, diffs 1.6.4)
+
+- `File` (full-file view) silently renders **nothing** when the file's
+  language isn't yet loaded into the shared highlighter: it defers code
+  painting to an async highlight, and the resulting `onRenderUpdate →
+  rerender` is swallowed by `render()`'s "nothing changed" early return
+  (same file / no annotation/theme change / no forceRender) — no console
+  error, a `diffs-container` with only the SVG sprite. `FileDiff` is
+  unaffected (it paints plain rows first, then re-tokenizes in place).
+  Fix (task 015): `createFileView` awaits `getSharedHighlighter` with
+  `langs: [getFiletypeFromFileName(path) ?? "text"]` before `File.render`,
+  so the first render paints synchronously. Verified headlessly (CDP).

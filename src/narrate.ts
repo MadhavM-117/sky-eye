@@ -4,7 +4,9 @@
 // share it. Degradation rule (§16.1/§16.3): no adapter or a failed/malformed
 // call never blocks the session — rules marks stay, narrative stays as-is.
 import { ApiError } from "./cli.ts";
+import { classifyChapter } from "./classify.ts";
 import { resolveTask } from "./llm.ts";
+import { applyClassifier, loadClassifyRules } from "./custom-classifier.ts";
 import { persistSession } from "./store.ts";
 import { readFileAt } from "./tree.ts";
 import type { Chapter, LlmAdapter, LlmRequest, LineMark, Session } from "./types.ts";
@@ -180,7 +182,47 @@ export async function rerunChapter(
 
   const a = adapters ?? { narrate: resolveTask(root, "narrate"), classify: resolveTask(root, "classify") };
   if (!a.narrate && !a.classify) return session; // no config → rules-only world
+  await narrateOne(a, root, kind, session, chapter);
+  return persistSession(root, session);
+}
 
+// rerun-all (task 018, spec §16.6): regenerate everything in place on the
+// stored diff — rules marks + classifier pass + narrative/LLM marks for
+// every chapter. The diff itself is NOT re-generated (refresh, §13, owns
+// that); chapter ids can't move (same diff → same ids, §8.5). One confirm
+// gate covers all edited narratives.
+export async function rerunAll(
+  root: string,
+  kind: "git" | "jj",
+  session: Session,
+  confirm: boolean,
+  adapters?: Adapters,
+): Promise<Session> {
+  if (session.chapters.some((c) => c.narrativeEdited) && !confirm)
+    throw new ApiError(409, "narrative edited", { error: "narrative edited", needsConfirm: true });
+  // rules pass first (machine-owned, config-free), then the custom
+  // classifier (§16.5) — narrate's LLM marks only overwrite "rules" marks,
+  // so custom marks survive the narrate loop (§9.3 semantics)
+  const rules = loadClassifyRules(root);
+  for (const c of session.chapters) c.attention = classifyChapter(c, rules);
+  await applyClassifier(root, session.base, session.head, session.chapters);
+
+  const a = adapters ?? { narrate: resolveTask(root, "narrate"), classify: resolveTask(root, "classify") };
+  if (!a.narrate && !a.classify) return persistSession(root, session); // rules/classifier only
+  for (const chapter of session.chapters) await narrateOne(a, root, kind, session, chapter);
+  return persistSession(root, session);
+}
+
+// Shared per-chapter narration core (extracted from rerunChapter): head-
+// contents context, shared vs separate calls, mark merging. Mutates the
+// chapter in place; persistence is the caller's job.
+async function narrateOne(
+  a: Adapters,
+  root: string,
+  kind: "git" | "jj",
+  session: Session,
+  chapter: Chapter,
+): Promise<void> {
   const headContents = new Map<string, string>();
   for (const s of chapter.files) {
     if (s.status === "deleted") continue;
@@ -193,7 +235,7 @@ export async function rerunChapter(
   }
   const diffText = chapterDiffText(chapter, headContents);
   const otherTitles = session.chapters
-    .filter((c) => c.id !== chapterId)
+    .filter((c) => c.id !== chapter.id)
     .map((c) => chapterTitle(c));
   const marksInPrompt = currentMarksText(chapter);
 
@@ -207,7 +249,7 @@ export async function rerunChapter(
         narrateUserPrompt(chapter, otherTitles, diffText) +
         `\n\nCurrent rule-based marks for this chapter:\n${marksInPrompt}`,
     });
-    if (text === undefined) return persistSession(root, session);
+    if (text === undefined) return;
     try {
       const { narrative, marks } = parseLlmResponse(text, "shared");
       if (narrative) chapter.narrative = narrative;
@@ -215,7 +257,7 @@ export async function rerunChapter(
     } catch {
       console.error("sky-eye: llm shared response malformed — keeping rules marks");
     }
-    return persistSession(root, session);
+    return;
   }
 
   // different configs → two calls; each degrades independently
@@ -241,5 +283,4 @@ export async function rerunChapter(
       }
     }
   }
-  return persistSession(root, session);
 }
