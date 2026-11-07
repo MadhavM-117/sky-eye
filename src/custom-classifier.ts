@@ -1,13 +1,15 @@
-// Custom classifier hook (spec §16.5): when `classifier.command` is set, an
-// external executable *becomes* the classifier at every chapter rebuild.
-// JSON request on stdin (chapters with their changed lines), sparse marks
-// JSON on stdout, merged per line coordinate over the built-in rules pass —
-// unmarked lines keep their rules marks. A failed run (non-zero exit,
-// timeout, malformed output) keeps rules marks unless `fallback: false`,
-// in which case marks are cleared (visible, honest failure).
+// Classifier pass (spec §16.5): runs at every chapter rebuild. Two backends
+// share one merge/fallback/log path — the exec hook (`classifier.command`:
+// JSON request on stdin, sparse marks JSON on stdout) and built-in backends
+// (`classifier.builtin`, first: jev via OpenRouter — src/jev.ts). Marks are
+// merged per line coordinate over the built-in rules pass — unmarked lines
+// keep their rules marks. A failed run (non-zero exit, timeout, HTTP error,
+// malformed output) keeps rules marks unless `fallback: false`, in which
+// case marks are cleared (visible, honest failure).
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { jevClassify } from "./jev.ts";
 import type { Chapter, ClassifierConfig, ClassifyRules, LineMark } from "./types.ts";
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -20,16 +22,46 @@ export function loadClassifierConfig(root: string): ClassifierConfig | undefined
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
     const c = parsed.classifier;
-    if (typeof c?.command !== "string" || !c.command.trim()) return undefined;
-    return {
-      command: c.command,
-      timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
-      fallback: c.fallback !== false,
-      debug: c.debug === true,
-    };
+    // exec hook wins over built-in backends (documented in §16.1)
+    if (typeof c?.command === "string" && c.command.trim()) {
+      return {
+        command: c.command,
+        timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
+        fallback: c.fallback !== false,
+        debug: c.debug === true,
+      };
+    }
+    // built-in backends; jev needs a model — anything else → no pass (rules only)
+    if (c?.builtin === "jev" && typeof c.model === "string" && c.model.trim()) {
+      return {
+        builtin: "jev",
+        model: c.model,
+        apiKey: typeof c.apiKey === "string" ? c.apiKey : undefined,
+        baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : undefined,
+        instructions: typeof c.instructions === "string" ? c.instructions : undefined,
+        criteria: validCriteria(c.criteria),
+        timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
+        fallback: c.fallback !== false,
+        debug: c.debug === true,
+      };
+    }
+    return undefined;
   } catch {
     return undefined;
   }
+}
+
+// mark NAME → criteria description; keys must be valid mark names (same
+// regex the exec protocol enforces) with non-empty descriptions — invalid
+// entries are dropped, none left → defaults (jev.ts DEFAULT_CRITERIA)
+function validCriteria(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [name, description] of Object.entries(raw as Record<string, unknown>)) {
+    if (MARK_NAME.test(name) && typeof description === "string" && description.trim())
+      out[name] = description.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 // config globs extending the built-in rule buckets (§16.4) — same
@@ -124,8 +156,8 @@ export function parseClassifierResponse(raw: string, expected: Set<string>): Lin
 
 // coordinates of every changed line in the request we sent — parsed back
 // out of the request JSON so spawnClassifier doesn't need chapters threaded
-// through
-function expectedCoordinates(request: string): Set<string> {
+// through (shared with the built-in jev backend)
+export function expectedCoordinates(request: string): Set<string> {
   const parsed = JSON.parse(request) as {
     chapters: { files: { file: string; hunks: { lines: { side: string; line: number }[] }[] }[] }[];
   };
@@ -156,7 +188,9 @@ export async function spawnClassifier(
   request: string,
 ): Promise<ClassifierRun> {
   const started = Date.now();
-  const res = await shRun(config.command, cwd, config.timeoutMs ?? DEFAULT_TIMEOUT_MS, request);
+  // callers only invoke the exec path when `command` is set (config loader
+  // guarantees it); the `!` encodes that contract
+  const res = await shRun(config.command!, cwd, config.timeoutMs ?? DEFAULT_TIMEOUT_MS, request);
   const durationMs = Date.now() - started;
   const run: ClassifierRun = {
     failed: true,
@@ -217,7 +251,7 @@ function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): v
       JSON.stringify(
         {
           time: new Date().toISOString(),
-          command: config.command,
+          command: config.command ?? `jev:${config.model}`, // backend label
           durationMs: run.durationMs,
           exitCode: run.exitCode,
           failed: run.failed,
@@ -238,7 +272,8 @@ function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): v
 
 // Mutates the freshly-built chapters' attention in place per the merge
 // semantics. No-op without config; rules marks are the fallback layer.
-export async function applyCustomClassifier(
+// Backend selection: exec hook (`command`) wins, else built-in (jev).
+export async function applyClassifier(
   root: string,
   base: string,
   head: string,
@@ -246,7 +281,10 @@ export async function applyCustomClassifier(
 ): Promise<void> {
   const config = loadClassifierConfig(root);
   if (!config) return;
-  const run = await spawnClassifier(config, root, classifierRequest(root, base, head, chapters));
+  const request = classifierRequest(root, base, head, chapters);
+  const run = config.command
+    ? await spawnClassifier(config, root, request)
+    : await jevClassify(config, root, request);
   writeLog(root, config, run);
   if (run.failed) {
     if (config.fallback) return; // keep the rules marks

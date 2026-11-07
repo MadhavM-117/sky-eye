@@ -7,7 +7,7 @@ import { ApiError, validateRef } from "./cli.ts";
 import { buildDiff, diffDigest, parseUnifiedDiff } from "./diff.ts";
 import { chunk, loadConfig } from "./chunker.ts";
 import { withAttention } from "./classify.ts";
-import { applyCustomClassifier, loadClassifyRules } from "./custom-classifier.ts";
+import { applyClassifier, loadClassifyRules } from "./custom-classifier.ts";
 import { resolveStableId } from "./refs.ts";
 import { getIdentity } from "./identity.ts";
 import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
@@ -133,7 +133,7 @@ export async function chaptersFromDiff(
   const chapters = chunk(parseUnifiedDiff(diffText), loadConfig(root)).map((c) =>
     withAttention(c, rules),
   );
-  await applyCustomClassifier(root, ids.base, ids.head, chapters);
+  await applyClassifier(root, ids.base, ids.head, chapters);
   return chapters;
 }
 

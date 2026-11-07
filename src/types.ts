@@ -39,9 +39,17 @@ export type LineMark = {
   markSource: "rules" | "llm" | "custom";
 };
 
-// custom classifier command (spec §16.5) — .sky-watch/config.json → `classifier`
+// classifier pass (spec §16.5) — .sky-watch/config.json → `classifier`.
+// Two backends: the exec hook (`command`) and built-in backends (`builtin`,
+// first: jev via OpenRouter's decision API). `command` wins when both set.
 export interface ClassifierConfig {
-  command: string;
+  command?: string; // exec hook — JSON in/out on stdin/stdout
+  builtin?: "jev";
+  model?: string; // required for jev (e.g. "typesafe/jev-1.14")
+  apiKey?: string; // falls back to OPENROUTER_API_KEY env, then llm defaults
+  baseUrl?: string; // jev default: https://openrouter.ai/api
+  instructions?: string; // per-line question instruction override
+  criteria?: Record<string, string>; // mark NAME → criteria description; default: rules buckets
   timeoutMs?: number; // default 30_000
   fallback?: boolean; // default true: rules marks survive a failed run
   debug?: boolean; // full request/response into classifier.log

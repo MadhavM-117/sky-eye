@@ -319,8 +319,9 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   extensible — custom classifiers (§16.5) may emit other names, rendered as
   a neutral glyph: the name's initial in the muted color (readable, no
   canonical semantics; a bare dot was invisible in dark mode — task 013). Rules
-  pass fills marks at session creation; the custom classifier (§16.5)
-  overrides marks per line with `markSource: "custom"`; LLM pass may
+  pass fills marks at session creation; the classifier pass (§16.5 — exec
+  hook or built-in backend) overrides marks per line with
+  `markSource: "custom"`; LLM pass may
   overwrite `markSource: "rules"` marks without confirmation (only human
   data is protected; marks are always machine-owned).
 - `Comment`: includes both `createdAt: number` and `updatedAt: number` (set to
@@ -492,8 +493,11 @@ during step 4. This is the D§11 risk, accepted.
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
 `narrate` / `classify` (`apiKey`, `model`, `baseUrl`, `provider`, plus
 `command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
-(custom classifier command: `command`, `timeoutMs` (default 30000),
-`fallback` (default true), `debug` (default false) — §16.5) and
+(classifier pass: `command` (exec hook), or built-in backends — `builtin:
+"jev"` + `model` via OpenRouter — plus `apiKey` (falls back to
+`OPENROUTER_API_KEY` env, then the llm `defaults` key), `baseUrl`,
+`instructions`, and `criteria` (mark NAME → criteria description; keys are
+the mark vocabulary, default = the rules buckets) — §16.5), and
 `classifyRules` (`safePaths` / `focusPaths` globs extending the built-in
 buckets — §16.4). Missing file or
 missing key for a task → **task skipped, never blocks the session**
@@ -538,22 +542,35 @@ The built-in buckets are user-extensible via `classifyRules` (`safePaths` /
 `focusPaths` globs, §16.1); a configured custom classifier (§16.5) overrides
 rule marks per line.
 
-### 16.5 Custom classifier (exec protocol)
+### 16.5 Classifier pass (exec hook + built-in backends)
 
-When `classifier.command` is set, sky-eye spawns it at every chapter
-rebuild (creation, refresh, supersede) — the same moments as the rule pass.
+The classifier pass runs at every chapter rebuild (creation, refresh,
+supersede) — the same moments as the rule pass. Two backends share one
+merge/fallback/log path; `classifier.command` (exec hook) wins when both
+are configured.
+
+**Exec hook** — when `classifier.command` is set, sky-eye spawns it.
 Request/response JSON on stdin/stdout (`protocol: 1`): chapters with their
 changed lines in; sparse `marks` out, overriding rules marks per
 `(file, side, line)` with `markSource: "custom"`; unmarked lines keep rules
-marks. Invalid entries are dropped; a failed run (non-zero exit, timeout,
+marks. Invalid entries are dropped.
+
+**Built-in backends** — when `classifier.builtin: "jev"` (+ `model`) is
+set, sky-eye itself classifies via typesafe's jev decision model on
+OpenRouter (`POST {baseUrl:-https://openrouter.ai/api}/alpha/decisions`):
+one request per rebuild, one `choice` question per changed line, criteria =
+the configured `criteria` map (mark names = keys, descriptions = values;
+default = the rules buckets), diff rendered as `state`. API key: `apiKey` →
+`OPENROUTER_API_KEY` env → llm `defaults` (one OpenRouter key serves both
+tasks). Responses answer at `answers[<qKey>].choice`.
+
+**Shared semantics** — a failed run (non-zero exit, timeout, HTTP error,
 malformed output) falls back to rules marks unless
 `classifier.fallback: false`, in which case marks are cleared. Every run
 logged to `.sky-watch/classifier.log`, rotated per run (`classifier.log.1`
 keeps the previous run; full transcript with `classifier.debug`);
-`sky-eye debug-classify <sessionId>` replays the
-classifier against a stored session and prints the transcript. Future
-built-in classifiers (LLM-backed, decision models) will speak the same
-protocol; none ship in v1.
+`sky-eye debug-classify <sessionId>` replays the configured backend against
+a stored session and prints the transcript.
 
 ## 17. Deep links (D§4, U§3.2)
 
@@ -688,6 +705,15 @@ merge/fallback semantics, `classifier.log`, `debug-classify`. *Accept:*
 demo repo with a scripted classifier → session creation shows
 `markSource: "custom"` marks; broken classifier → rules fallback (or
 cleared with `fallback:false`); `debug-classify` prints the transcript.
+
+**M5.2 — Built-in classifier (jev/OpenRouter).** Deliver: `classifier`
+config built-in branch (`builtin`/`model`/`apiKey`/`baseUrl`/`instructions`/
+`criteria`), jev backend (`jev.ts`) speaking OpenRouter's decision API,
+backend-shared fallback/log/debug semantics. *Accept:* jev + key config →
+per-line AI marks at session creation with user-chosen mark names/criteria;
+missing key or HTTP failure → rules fallback (or cleared with
+`fallback:false`); run in `classifier.log`; `debug-classify` prints the
+HTTP transcript; exec-hook configs behave exactly as before.
 
 **M6 — Export/import.** Deliver: export download, import + merge (`updatedAt`
 wins per comment) + digest re-verification + remap-on-mismatch. *Accept:*

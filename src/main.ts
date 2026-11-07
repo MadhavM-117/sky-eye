@@ -10,6 +10,7 @@ import {
   loadClassifierConfig,
   spawnClassifier,
 } from "./custom-classifier.ts";
+import { JEVR_DEFAULT_BASE, jevClassify } from "./jev.ts";
 import { loadSession } from "./store.ts";
 import "./routes.ts";
 
@@ -44,11 +45,13 @@ if (process.argv[2] === "debug-classify") {
   const session = loadSession(root, id);
   const config = loadClassifierConfig(root);
   if (!config) {
-    console.error("sky-eye: no classifier configured (.sky-watch/config.json → classifier.command)");
+    console.error("sky-eye: no classifier configured (.sky-watch/config.json → classifier.command / classifier.builtin)");
     process.exit(1);
   }
   const request = classifierRequest(root, session.base, session.head, session.chapters);
-  const run = await spawnClassifier({ ...config, debug: true }, root, request);
+  const run = config.command
+    ? await spawnClassifier({ ...config, debug: true }, root, request)
+    : await jevClassify(config, root, request);
   const overridden = run.failed ? 0 : session.chapters.reduce(
     (n, c) => n + c.attention.filter((m) => run.marks.some((k) =>
       k.file === m.file && k.side === m.side && k.line === m.line)).length,
@@ -57,7 +60,7 @@ if (process.argv[2] === "debug-classify") {
   const rulesMarks = session.chapters.reduce((n, c) => n + c.attention.length, 0);
   console.log(
     [
-      `command:  ${config.command}`,
+      `backend:  ${config.command ?? `jev:${config.model} @ ${config.baseUrl ?? JEVR_DEFAULT_BASE}`}`,
       `duration: ${run.durationMs}ms, exit: ${run.exitCode}${run.failed ? ` — FAILED: ${run.error}` : ""}`,
       `marks:    ${run.marks.length} custom applied, ${rulesMarks - overridden} rules kept`,
       run.stderr ? `--- stderr ---\n${run.stderr.trimEnd()}` : "",
