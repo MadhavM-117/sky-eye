@@ -154,13 +154,14 @@ const COLORS = {
 };
 
 // Pure part of the gutter glyph (fixture-tested, §20): canonical mark names
-// (§9.3) get glyph + color; custom classifier names (§16.5) render as a
-// neutral muted dot.
+// (§9.3) get glyph + color; custom classifier names (§16.5) render their
+// first letter in the muted color — neutral (no canonical semantics) but
+// readable, unlike the original dot (invisible in dark mode, task 013).
 export function markGlyphSpec(mark) {
   const name = String(mark.mark);
   return {
     cls: name.replace(/[^a-z0-9-]/g, ""),
-    glyph: GLYPHS[name] ?? "·",
+    glyph: GLYPHS[name] ?? (name[0] ?? "·").toUpperCase(),
     color: COLORS[name] ?? "var(--muted)",
     title: `${name} (${mark.markSource})`,
   };
@@ -176,7 +177,7 @@ function markGlyph(mark) {
   node.title = title;
   node.style.cssText =
     "position:absolute;inset-block:0;left:6px;display:flex;align-items:center;" +
-    `color:${color};`;
+    `color:${color};font-weight:600;`;
   return node;
 }
 

@@ -16,3 +16,4 @@ below is the current plan.
 - `010` M6 Export/import — download, merge-on-import (`updatedAt` wins), re-verification (no pierre surface)
 - `011` M7 LLM narratives — llm.ts, narrate, shared classification call (no pierre surface); prompt sees all of a chapter's file slices
 - `012` Parser guard — pass --no-mnemonic-prefix in buildDiff git args (user config breaks parseUnifiedDiff)
+- `013` Custom-mark glyph visibility — neutral `·` for custom classifier names is invisible in dark mode (found verifying 009); pick an option, update spec §16.5 + ux §3.2 — **decision pending**

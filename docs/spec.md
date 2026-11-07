@@ -315,7 +315,8 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   "rules"|"llm"|"custom" }` (`file` required: a multi-file chapter's line
   numbers are per-slice; `mark` uses the canonical vocabulary but is
   extensible — custom classifiers (§16.5) may emit other names, rendered as
-  a neutral chip). Rules
+  a neutral glyph: the name's initial in the muted color (readable, no
+  canonical semantics; a bare dot was invisible in dark mode — task 013). Rules
   pass fills marks at session creation; the custom classifier (§16.5)
   overrides marks per line with `markSource: "custom"`; LLM pass may
   overwrite `markSource: "rules"` marks without confirmation (only human
@@ -572,8 +573,9 @@ Three views, hash-routed (`#` empty → first screen):
    the line numbers) via FileDiff's `onPostRender` hook — a post-render
    decoration pass, swept and re-stamped on every repaint including
    virtualized scroll — so a mark adds no vertical space and large MRs stay
-   readable (task 009; full plan `tmp/plans/marks-column/plan.md`). Empty
-   diff → "nothing to review" message.
+   readable (task 009; full plan `tmp/plans/marks-column/plan.md`). Custom
+   classifier names render as the name's initial in the muted color (§9.3,
+   task 013). Empty diff → "nothing to review" message.
 3. **Explorer:** breadcrumb + head/base side toggle (sky-eye) around an
    `@pierre/trees` `FileTree` (directory navigation, search, git-status
    badges on changed files via `setGitStatus`); read-only file view rendered

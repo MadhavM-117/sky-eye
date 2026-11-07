@@ -129,10 +129,11 @@ read top to bottom; collapsing is an optimization, not the default).
   highlighter (152 languages, plain-text fallback) — file views and diff
   lines use the same highlighter and theme.
 - **Attention marks** render in a dedicated gutter column beside the line
-  numbers, one glyph per marked line: ◆ focus / ▲ glance / ● safe (unknown
-  classifier names → a neutral dot), colored by mark, with the mark name and
-  source on hover. Marks never take space below the line — that's for
-  comments — so mark-dense diffs stay readable.
+  numbers, one glyph per marked line: ◆ focus / ▲ glance / ● safe (custom
+  classifier names → the name's initial in the muted color, e.g. `S` for
+  `skim`), colored by mark, with the mark name and source on hover. Marks
+  never take space below the line — that's for comments — so mark-dense
+  diffs stay readable.
 - **Deep links**: hovering a diff line or comment exposes a copy-link
   (local URL fragment). Opening one scrolls to and highlights the target;
   links survive export/import and break on rebase like everything else

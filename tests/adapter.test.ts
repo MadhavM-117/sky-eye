@@ -192,11 +192,12 @@ test("markGlyphSpec: canonical marks map onto glyph + color var", () => {
   assert.equal(markGlyphSpec(mark({ mark: "safe" })).glyph, "●");
 });
 
-test("markGlyphSpec: custom classifier names → neutral muted dot (§16.5)", () => {
+test("markGlyphSpec: custom classifier names → neutral initial in muted (§16.5, task 013)", () => {
   const spec = markGlyphSpec(mark({ mark: "danger", markSource: "custom" }));
-  assert.equal(spec.glyph, "·");
+  assert.equal(spec.glyph, "D"); // first letter, readable — not a faint dot
   assert.equal(spec.color, "var(--muted)");
   assert.equal(spec.cls, "danger"); // sanitized class for scoping
   assert.equal(spec.title, "danger (custom)"); // mark name + source on hover
+  assert.equal(markGlyphSpec(mark({ mark: "we!rd-name" })).glyph, "W");
   assert.equal(markGlyphSpec(mark({ mark: "we!rd-name" })).cls, "werd-name");
 });
