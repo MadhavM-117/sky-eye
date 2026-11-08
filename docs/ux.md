@@ -104,7 +104,9 @@ header at any time:
   the diff view (unknown file types show as plain text).
 - The tree can be shown at the head or base side of a session, so the user
   can compare "how this file looked before" against the diff.
-- Changed files inside a diff chapter link to their explorer view.
+- Changed files inside a diff chapter stay reachable via the chapter rail
+  (§3.3); a file's diff block can also render the whole file in place
+  (full-file mode, §3.2).
 
 Read-only in v1: no editing, no blame, no history view.
 
@@ -112,18 +114,35 @@ Read-only in v1: no editing, no blame, no history view.
 
 ### 3.1 Header
 
-Session label (click to edit; falls back to the raw id when unset), branch
-alias(es), open-comment count, reviewed toggle. Actions: refresh (below),
-re-run (chapter analysis), regenerate all (one click re-runs marks +
-narratives for every chapter; asks once before overwriting any edited
-narrative; while it runs the button is disabled, a banner reports progress
-and each chapter shows the same "analyzing…" indicator as a per-chapter
-re-run), re-group (re-runs the chapter grouping on the stored diff —
-semantic titles return via the chunk task, spec §8a; asks once before
-overwriting edited narratives since chapter ids may move), export, archive
-(review leaves the list, findable on the first screen), delete (confirm —
-permanent). Repo path + kind badge persist here
-too.
+The header is laid out on three lines so each kind of information gets its
+own row and nothing competes for attention:
+
+1. **Title row** — session label (click to edit; falls back to the raw id
+   when unset), repo-kind badge, branch alias(es), open-comment count.
+2. **Context row** — the full path to the repository being reviewed
+   (`meta.repo`, display only), the current (head) branch, and the base
+   branch the review compares against — so it is always unambiguous what is
+   under review and against what.
+3. **Actions row** — grouped, primary first, so the row reads at a glance:
+
+   - **Primary buttons** (always visible): **mark reviewed** (a button, not
+     a checkbox — toggles the session's reviewed state; when reviewed it
+     shows the marked state and clicking unmarks), **files** (explorer),
+     **export**.
+   - **Overflow menu** ("more ▾", collapsible): regenerate all (one click
+     re-runs marks + narratives for every chapter; asks once before
+     overwriting any edited narrative; while it runs the button is
+     disabled, a banner reports progress and each chapter shows the same
+     "analyzing…" indicator as a per-chapter re-run), re-group (re-runs the
+     chapter grouping on the stored diff — semantic titles return via the
+     chunk task, spec §8a; asks once before overwriting edited narratives
+     since chapter ids may move), archive (review leaves the list, findable
+     on the first screen), delete (confirm — permanent).
+
+Every action shows **help text on hover** explaining what it does,
+including its side effects (delete says "permanent", archive says it
+leaves the list). Refresh stays in the stale banner (below): it only
+exists when there is something to refresh.
 
 **Stale session:** if the diff behind the session has changed (head moved,
 or a jj rebase rewrote the commits under it), a "review is stale — refresh?"
@@ -159,12 +178,27 @@ files.
   diff (old left, new right), hunks with context lines. Code is syntax-highlighted by the pierre
   highlighter (152 languages, plain-text fallback) — file views and diff
   lines use the same highlighter and theme.
-  Each per-file block is an **accordion**: clicking the file heading
-  collapses/expands its diff. Each heading also carries a **viewed
-  checkbox**: marking a file viewed persists (spec §9.3) and collapses the
-  block immediately; a viewed file renders collapsed by default. Collapsing
-  alone is ephemeral (not persisted) — unmarking viewed does not auto-expand
-  a block; expanding it again is one click.
+  Each per-file block is an **accordion**: clicking **anywhere on the file
+  bar** (the whole heading row) collapses/expands its diff — the viewed
+  checkbox and the full-file button are the only click targets on the bar
+  that do not toggle. The bar shows the file path as **plain text** (no
+  implicit link), a status glyph, the **viewed checkbox**, and an explicit
+  **full file** button that swaps the block's diff view for the whole file
+  rendered in the same diff viewer — and back.
+- **Full-file mode**: the full-file button renders the entire file in the
+  diff viewer — every line visible, the changed lines still marked — by
+  expanding the hunks to whole-file context (no new data: the adapter pads
+  the hunk list with context lines from the file content, spec §18). In
+  this mode **any line is commentable**, not only changed ones: a gutter
+  click on an unchanged line opens the same composer and stores the same
+  content anchor (spec §12). Such comments re-anchor on refresh and stay
+  pinned as long as their line still matches the file content, even when
+  it lies outside every diff hunk (spec §13.3); they are visible only in
+  full-file mode, and the open-comment count includes them.
+- The viewed checkbox: marking a file viewed persists (spec §9.3) and
+  collapses the block immediately; a viewed file renders collapsed by
+  default. Collapsing alone is ephemeral (not persisted) — unmarking
+  viewed does not auto-expand a block; expanding it again is one click.
 - **Attention marks** render in a dedicated gutter column beside the line
   numbers, one glyph per marked line: ◆ focus / ▲ glance / ● safe (custom
   classifier names → the name's initial in the muted color, e.g. `S` for
@@ -198,8 +232,8 @@ Clicking a row switches to that chapter; the active row is highlighted and
 nests the chapter's **file list** (in path order): file path, status glyph
 (A added / D deleted / M modified), and the per-file change summary `+x −y`
 from that slice's hunks. Clicking a file scrolls to that file's diff block
-(scroll-and-flash, as with deep links); each file keeps its existing link
-into the explorer (§2). Prev/next chapter controls move between chapters.
+(scroll-and-flash, as with deep links). Prev/next chapter controls move
+between chapters.
 
 Chapter rows and nested file rows show a viewed glyph (✓) — the file's own
 viewed state, and the chapter's derived one (all files viewed → chapter

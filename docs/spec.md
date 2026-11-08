@@ -464,6 +464,10 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
   boundaries and avoids scraping highlighted DOM nodes in the browser. Editing
   a comment's `text`, `priority`, or `resolved` state preserves its existing
   `anchor` and bumps `updatedAt`.
+- Comments can be created on any rendered diff line; in full-file mode
+  (§18) that includes unchanged lines outside all hunks — same composer,
+  same server-side anchor capture (the capture path reads the file at head
+  and takes context around the pinned line, unchanged for unchanged lines).
 - Old-side comments are stored normally but their anchors are expected to
   orphan on refresh (D§6 cut: old side is history, never remapped).
 
@@ -518,10 +522,17 @@ For each comment (new-side anchors only; old-side orphan immediately):
    use the slice that contains the line). If it does, re-pin the comment
    (set `line`, `chapterId` of the chapter owning that slice, fresh `anchor`
    with updated `before`/`after`, `orphaned: false`).
-5. If there is no match in the file **or** the matched line now sits outside
-   all diff hunks in the rebuilt chapters → mark the comment **orphaned**
-   (`orphaned: true`), keep the anchor, and surface it in the orphan triage
-   banner so no open comment is ever hidden outside the rendered diff.
+5. If the matched line sits **outside all diff hunks** in the rebuilt
+   chapters but the anchor still matched → re-pin anyway, as an
+   **unchanged-line comment** (`orphaned: false`): full-file mode (§18)
+   renders the whole file, so the comment stays reachable there — it is
+   visible only in full-file mode, not hidden. Such comments exist only
+   since full-file mode; earlier sessions hold in-hunk comments only, so no
+   migration.
+6. If there is no match in the file at all (commented line edited away,
+   file renamed) → mark the comment **orphaned** (`orphaned: true`), keep
+   the anchor, and surface it in the orphan triage banner so no open
+   comment is ever lost.
 
 ### 13.4 Orphan triage UI (U§3.1, D§6.3)
 
@@ -723,6 +734,9 @@ Pure frontend routing over session data; no endpoint:
   (§18.2) on the owning chapter when the target is a chapter, file/line, or
   comment, scroll to + flash-highlight the target. Valid across
   export/import; break on rebase like everything session-keyed.
+- A line/comment target outside every rendered hunk of its file forces the
+  file block into full-file mode first (§18) — the target line is only
+  rendered there.
 
 ## 18. Frontend architecture (U§1.5–3.2)
 
@@ -736,10 +750,14 @@ Three views, hash-routed (`#` empty → first screen):
    Below the list: archived reviews (§10 archive routes) with restore +
    delete; restore moves a review back into the active list, delete
    (confirmed) removes it permanently.
-2. **Session view:** header (editable label, aliases, open-comment count,
-   reviewed toggle, actions: refresh / re-run / regenerate all (§16.6) /
-   export / archive / delete, stale banner, orphan
-   banner) → **one chapter at a time**, navigated by the chapter rail
+2. **Session view:** header on three lines (ux §3.1) — title row (editable
+   label, aliases, open-comment count), context row (full repo path, head
+   branch, base branch), actions row grouped into primary buttons
+   (mark-reviewed **button** — not a checkbox, files, export) plus a
+   collapsible "more" menu (regenerate all (§16.6), re-group, archive,
+   delete); every action shows help text on hover; refresh lives in the
+   stale banner, the orphan banner sits directly below
+   → **one chapter at a time**, navigated by the chapter rail
    (below); narrative as a
    rendered markdown view above the diff (stored as markdown text verbatim,
    HTML-escaped before rendering — never raw HTML), editable only via an
@@ -747,9 +765,17 @@ Three views, hash-routed (`#` empty → first screen):
    (save → `narrativeEdited`); while the LLM analysis runs, a loading
    indicator replaces the view and the edit button is hidden; a chapter-
    viewed toggle in the chapter header (marks all files viewed, §9.3);
-   per-file headings are accordion headers — clickable to collapse/expand
-   the block, each carrying the file's viewed checkbox (a viewed file
-   renders collapsed; collapse itself is ephemeral, ux §3.2); per chapter,
+   per-file headings are whole-bar accordion headers — clicking anywhere
+   on the file bar toggles the block (the viewed checkbox and the
+   full-file button are the only non-toggling targets), each carrying the
+   file's viewed checkbox (a viewed file renders collapsed; collapse
+   itself is ephemeral, ux §3.2) and a **full file** button that swaps the
+   block to full-file mode: the adapter pads the stored hunks with context
+   lines from the head file (fetched via the existing `/api/file` — no new
+   endpoint, no schema change) so the whole file renders in the same
+   `FileDiff`, changed lines still marked; any line is commentable there,
+   and unchanged-line comments stay pinned on refresh (§13.3, visible only
+   in full-file mode); per chapter,
    a `@pierre/diffs` `FileDiff` (split style, one file) renders the
    two-column diff with hunks + context. Comments attach
    through FileDiff's **line-annotation framework** (annotation rows under
@@ -765,7 +791,9 @@ Three views, hash-routed (`#` empty → first screen):
 3. **Explorer:** breadcrumb + head/base side toggle (sky-eye) around an
    `@pierre/trees` `FileTree` (directory navigation, search, git-status
    badges on changed files via `setGitStatus`); read-only file view rendered
-   by `@pierre/diffs` `File` / `CodeView`. Changed files in chapters link here.
+   by `@pierre/diffs` `File` / `CodeView`. Changed files stay reachable
+   from the chapter rail; a file's diff block can render the full file in
+   place (full-file mode, §18).
 
 **Chapter rail (ux §3.3):** the session body shows **one chapter at a
 chapter at a time**; a collapsible rail left of the body is the navigation.
@@ -832,7 +860,8 @@ Priority order — "chunker + remap first, that's where the bugs live":
    `buildChapters` (slice shape, maxLines re-split, leftovers via pure
    chunker, id formula unchanged), prompt-size circuit breaker.
 2. **`remap.test.ts`** — anchor scoring: exact match near old line, multiple
-   candidates, match outside new diff hunks → orphan, no match → orphan,
+   candidates, match inside a hunk → re-pin, match outside all hunks →
+   pinned as unchanged-line comment (§13.3), no content match → orphan,
    old-side anchors orphan immediately.
 3. **`diffparse.test.ts`** — unified-diff parsing edge cases (no newline at
    EOF, binary, deleted file `+++ /dev/null`, hunk without funcname).
@@ -914,6 +943,23 @@ still works rules-only (chapters stay "unanalyzed", order falls back to
 path); with config → a new session opens fully analysed, chapters in
 reading order, narratives cached,
 editable, re-run asks before overwriting edits.
+
+**M8 — Review ergonomics (design §9.8).** Deliver: three-line session
+header (title / repo-path + head/base context / grouped actions with a
+mark-reviewed button and a "more" overflow menu, hover help text on every
+action); whole-bar accordion toggling (bar click toggles, viewed checkbox
+and full-file button don't); full-file diff mode — adapter pads the stored
+hunks with context lines from `/api/file` content, explicit full-file
+button replaces the file-path link, unchanged-line comments (gutter click
+on any line; remap keeps them pinned outside hunks, §13.3; deep links
+force full-file mode, §17). *Accept:* header shows full repo path, head
+and base branch, with primary actions visible and the rest under "more",
+each with hover help; clicking a file bar toggles the block while the
+viewed checkbox and full-file button behave independently; full-file mode
+renders the whole file with changed lines marked and any line
+commentable; a comment on an unchanged line survives a rebase refresh
+(stays pinned, visible in full-file mode only) and a deep link to it opens
+the block in full-file mode.
 
 ## 22. Open questions
 

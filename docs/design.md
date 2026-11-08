@@ -221,9 +221,13 @@ shift. Comments survive via **content anchors**:
    - Multiple candidates → score by `before`/`after` context matches; best
      score wins.
    - If the matched line falls inside a hunk of the rebuilt chapters → re-pin.
-   - No match (commented line edited away, file renamed) or matched line now
-     sits outside all diff hunks → comment becomes **orphaned**: keeps its
-     old anchor, stays visible, shows in triage.
+   - Matched line outside all diff hunks → still re-pinned: it is a
+     comment on an **unchanged line** (only possible since full-file mode
+     allows commenting there, §6b) and renders in the file block's
+     full-file mode, not in the diff view.
+   - No match at all (commented line edited away, file renamed) → comment
+     becomes **orphaned**: keeps its old anchor, stays visible, shows in
+     triage.
 2. **Session identity**: a rebase that breaks the session key (git mode;
    jj keys survive rebases, §4) produces a new session ID. No silent
    merge — the old session is marked `supersededBy: <newId>` and its
@@ -313,8 +317,12 @@ on the `base` side). **Path containment:** both normalize the requested
 repo-relative path with `path.posix.normalize` and reject anything that escapes
 the repo root (`..` segments, leading `/` or `-`, backslashes, NUL bytes). The
 frontend offers a GitHub/GitLab-style tree browser: click through directories,
-open files read-only. Changed files in a diff link into the explorer at that
-path.
+open files read-only. Changed files stay reachable from the chapter rail and
+the header's files link; the diff block itself does not link its file path —
+it offers an explicit **full-file button** that renders the whole file in
+the diff viewer (hunks expanded to whole-file context by the adapter from
+`/api/file` content, ux §3.2), where any line — changed or unchanged — is
+commentable.
 
 Syntax highlighting is provided by `@pierre/highlights` (WAT/WASM,
 152 built-in languages, Zed-compatible themes) rather than a hand-rolled
@@ -392,6 +400,11 @@ sky-eye/
 5. **Rule-based attention marks.**
 6. **Export/import** with merge-on-import (`updatedAt` wins) and digest re-verification.
 7. **LLM narratives + refined classification**, opt-in.
+8. **Review ergonomics** — session header redesign (three-line layout:
+   title / repo-path + head/base context / grouped actions with a
+   mark-reviewed button and an overflow menu, hover help text; ux §3.1),
+   whole-bar accordion toggling with an explicit full-file button,
+   full-file diff mode with unchanged-line comments (ux §3.2).
 
 ## 10. Deliberate cuts
 
