@@ -19,6 +19,13 @@ type PierreFileDiffMetadata = {
 };
 
 export declare function patchText(file: DiffFile, hunks: Chapter["hunks"]): string;
+
+// Full-file mode (task 023, spec §18): stored hunks padded into ONE hunk
+// covering the whole file — gap lines are ctx from the head file content.
+export declare function fullFileHunks(
+  hunks: Chapter["hunks"],
+  fileLines: string[],
+): Chapter["hunks"];
 export declare function fileDiffMetadata(
   file: DiffFile,
   hunks: Chapter["hunks"],

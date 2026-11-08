@@ -3,8 +3,8 @@
 // double as the upgrade smoke test (pierre-packages.md upgrade procedure).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { commentAnnotations, fileDiffMetadata, markGlyphSpec, patchText, selectionSide } from "../src/public/pierre-adapter.js";
-import type { Comment, Hunk, LineMark } from "../src/types.ts";
+import { commentAnnotations, fileDiffMetadata, fullFileHunks, markGlyphSpec, patchText, selectionSide } from "../src/public/pierre-adapter.js";
+import type { Comment, DiffLine, Hunk, LineMark } from "../src/types.ts";
 
 // adapter input shape: {path, status} + hunks
 const modified = { path: "src/app.ts", status: "modified" } as const;
@@ -179,6 +179,63 @@ const mark = (over: Partial<LineMark>): LineMark => ({
   mark: "focus",
   markSource: "rules",
   ...over,
+});
+
+// full-file mode (task 023, spec §18): stored hunks padded to one
+// whole-file hunk from the head file content
+const hunk = (over: Partial<Hunk>): Hunk => ({
+  oldStart: 1, oldLines: 0, newStart: 1, newLines: 0, lines: [], ...over,
+});
+const dl = (type: "ctx" | "add" | "del", text: string, oldLine?: number, newLine?: number) =>
+  ({ type, text, ...(oldLine != null ? { oldLine } : {}), ...(newLine != null ? { newLine } : {}) });
+
+test("fullFileHunks: modified file — gap ctx from content, both numberings correct", () => {
+  const hunks = [
+    hunk({
+      oldStart: 3, oldLines: 1, newStart: 3, newLines: 2,
+      lines: [dl("del", "a3", 3), dl("add", "X", undefined, 3), dl("add", "Y", undefined, 4)],
+    }),
+  ];
+  const [out] = fullFileHunks(hunks, Array.from({ length: 10 }, (_, i) => `a${i + 1}`));
+  // 10 new lines − 2 adds + 1 del = 9 old lines; single whole-file hunk
+  assert.equal(out.oldStart, 1);
+  assert.equal(out.oldLines, 9);
+  assert.equal(out.newStart, 1);
+  assert.equal(out.newLines, 10);
+  assert.deepEqual(
+    out.lines.map((l: DiffLine) => [l.type, l.text, l.oldLine, l.newLine]),
+    [
+      ["ctx", "a1", 1, 1], ["ctx", "a2", 2, 2],
+      ["del", "a3", 3, undefined], ["add", "X", undefined, 3], ["add", "Y", undefined, 4],
+      ["ctx", "a5", 4, 5], ["ctx", "a6", 5, 6], ["ctx", "a7", 6, 7],
+      ["ctx", "a8", 7, 8], ["ctx", "a9", 8, 9], ["ctx", "a10", 9, 10],
+    ],
+  );
+  // patch header counts must round-trip through patchText for pierre's parser
+  assert.equal(patchText(modified, [out]).split("\n")[3], "@@ -1,9 +1,10 @@");
+});
+
+test("fullFileHunks: pure deletion hunk (newLines 0) pads around it", () => {
+  const hunks = [
+    hunk({ oldStart: 2, oldLines: 2, newStart: 2, newLines: 0, lines: [dl("del", "b2", 2), dl("del", "b3", 3)] }),
+  ];
+  const [out] = fullFileHunks(hunks, ["b1", "b4", "b5", "b6", "b7"]);
+  assert.equal(out.oldLines, 7); // 5 − 0 + 2
+  assert.deepEqual(
+    out.lines.map((l: DiffLine) => [l.type, l.text]),
+    [["ctx", "b1"], ["del", "b2"], ["del", "b3"], ["ctx", "b4"], ["ctx", "b5"], ["ctx", "b6"], ["ctx", "b7"]],
+  );
+});
+
+test("fullFileHunks: added file keeps the -0,0 header (patchText round-trip)", () => {
+  const added = { path: "n.ts", status: "added" } as const;
+  const hunks = [
+    hunk({ oldStart: 0, newStart: 1, lines: [dl("add", "n1", undefined, 1), dl("add", "n2", undefined, 2), dl("add", "n3", undefined, 3)] }),
+  ];
+  const [out] = fullFileHunks(hunks, ["n1", "n2", "n3"]);
+  assert.equal(out.oldStart, 0);
+  assert.equal(out.oldLines, 0);
+  assert.equal(patchText(added, [out]).split("\n")[4], "@@ -0,0 +1,3 @@");
 });
 
 test("markGlyphSpec: canonical marks map onto glyph + color var", () => {

@@ -5,6 +5,7 @@ import { get, mut } from "./api.js";
 import {
   commentAnnotations,
   createFileDiff,
+  fullFileHunks,
   initPierre,
   queryComment,
   queryRow,
@@ -35,6 +36,10 @@ let pendingTriage = null;
 // switch. At render time: override ?? viewed (viewed renders collapsed).
 let openOverrides = new Map(); // key `chapterId\0file` → true=open, false=manually closed
 const viewedKey = (chapterId, file) => `${chapterId}\u0000${file}`;
+// full-file mode (task 023, spec §18): also ephemeral per session — which
+// blocks render the padded whole file instead of the diff
+const fullFileMode = new Set(); // same keys as openOverrides
+const isFullFile = (chapterId, file) => fullFileMode.has(viewedKey(chapterId, file));
 const isViewed = (c, file) => (c.viewedFiles ?? []).includes(file);
 const chapterViewed = (c) => c.files.every((s) => isViewed(c, s.file));
 
@@ -92,6 +97,7 @@ async function render() {
       activeChapterId = null;
       pendingTriage = null;
       openOverrides.clear(); // fresh session → fresh collapse defaults
+      fullFileMode.clear();
     }
     renderSession(session, route);
   } catch (e) {
@@ -424,14 +430,19 @@ function chapterHtml(session, c, index) {
     .map((s) => {
       const key = viewedKey(c.id, s.file);
       const open = openOverrides.has(key) ? openOverrides.get(key) : !isViewed(c, s.file);
+      // the whole bar is the accordion toggle (ux §3.2); only the viewed
+      // checkbox and the full-file button are exempt. Deleted files have no
+      // head content to pad from → no full-file mode.
+      const full = isFullFile(c.id, s.file) && s.status !== "deleted";
       return `
-      <h3 class="file-head">
-        <button class="file-collapse" title="collapse / expand" data-chapter="${esc(c.id)}" data-file="${esc(s.file)}">${open ? "▾" : "▸"}</button>
-        <a class="file-link" href="#${esc(session.id)}/explorer/${encodeURIComponent(s.file)}§head">${esc(s.file)}</a>
+      <h3 class="file-head" data-chapter="${esc(c.id)}" data-file="${esc(s.file)}" title="click to collapse / expand">
+        <span class="file-chevron">${open ? "▾" : "▸"}</span>
+        <span class="file-path">${esc(s.file)}</span>
         <span class="status ${s.status}">${s.status}</span>
         <label class="viewed-toggle"><input type="checkbox" class="file-viewed"
           data-chapter="${esc(c.id)}" data-file="${esc(s.file)}"
           ${isViewed(c, s.file) ? "checked" : ""}/> viewed</label>
+        ${s.status === "deleted" ? "" : `<button class="file-full" data-chapter="${esc(c.id)}" data-file="${esc(s.file)}" title="${full ? "back to the diff" : "render the whole file (any line commentable)"}">${full ? "diff view" : "full file"}</button>`}
       </h3>
       <div class="diff-holder" data-chapter="${c.id}" data-file="${esc(s.file)}"
         ${open ? "" : "hidden"}></div>`;
@@ -494,12 +505,30 @@ function wireSession(session, route = null) {
       if (chapter) updateAnnotations(inst, annotationsFor(chapter, file));
     }
   };
+  // does the slice render this line? (new side / old side ranges)
+  const lineInSlice = (chapter, file, side, line) => {
+    const s = chapter.files.find((x) => x.file === file);
+    return (
+      !!s &&
+      s.hunks.some((h) =>
+        side === "old"
+          ? line >= h.oldStart && line < h.oldStart + h.oldLines
+          : line >= h.newStart && line < h.newStart + h.newLines,
+      )
+    );
+  };
+
   // annotations are per file slice inside a chapter (task 009); attention
   // marks (M5) do not ride this projection — the adapter stamps them into
-  // the gutter via onPostRender (task 009), fed per file slice below
+  // the gutter via onPostRender (task 009), fed per file slice below.
+  // Unchanged-line comments (§13.3.5) sit outside every hunk — only visible
+  // in full-file mode, where the whole file renders (spec §18).
   const annotationsFor = (chapter, file) =>
     commentAnnotations(
-      current.comments.filter((c) => c.chapterId === chapter.id && c.file === file),
+      current.comments.filter((c) => {
+        if (c.chapterId !== chapter.id || c.file !== file) return false;
+        return isFullFile(chapter.id, file) || lineInSlice(chapter, file, c.side, c.line);
+      }),
       composer.state?.chapterId === chapter.id && composer.state.file === file
         ? composer.state
         : null,
@@ -566,22 +595,25 @@ function wireSession(session, route = null) {
     );
     if (h) {
       h.hidden = false;
-      const btn = h.previousElementSibling?.querySelector(".file-collapse");
-      if (btn) btn.textContent = "▾";
+      const ch = h.previousElementSibling?.querySelector(".file-chevron");
+      if (ch) ch.textContent = "▾";
     }
     return h;
   };
 
-  // per-file accordion (task 021): chevron toggles collapse — ephemeral,
-  // unmarking viewed does not auto-expand (the explicit override survives)
-  document.querySelectorAll(".file-collapse").forEach((btn) => {
-    btn.onclick = () => {
-      const key = viewedKey(btn.dataset.chapter, btn.dataset.file);
-      const holder = btn.closest(".file-head").nextElementSibling;
+  // per-file accordion (task 023, ux §3.2): the WHOLE bar toggles collapse —
+  // only the viewed checkbox and the full-file button are exempt click
+  // targets. Ephemeral: unmarking viewed does not auto-expand (the explicit
+  // override survives).
+  document.querySelectorAll(".file-head").forEach((head) => {
+    head.onclick = (ev) => {
+      if (ev.target.closest(".viewed-toggle") || ev.target.closest(".file-full")) return;
+      const key = viewedKey(head.dataset.chapter, head.dataset.file);
+      const holder = head.nextElementSibling;
       const nowOpen = !holder.hidden;
       openOverrides.set(key, !nowOpen);
       holder.hidden = nowOpen;
-      btn.textContent = nowOpen ? "▸" : "▾";
+      head.querySelector(".file-chevron").textContent = nowOpen ? "▸" : "▾";
     };
   });
 
@@ -642,12 +674,13 @@ function wireSession(session, route = null) {
   // one diff block per file slice inside a chapter (task 009); extracted so
   // restampMarks can rebuild a chapter's diffs after a re-run (M7) — marks
   // are captured at createFileDiff time
-  const buildDiff = (holder, chapter, file) => {
+  // `hunks` override: full-file mode passes the padded whole-file hunks
+  const buildDiff = (holder, chapter, file, hunks) => {
     const slice = chapter.files.find((s) => s.file === file);
     if (!slice) return;
     const diff = createFileDiff(
       { path: slice.file, status: slice.status },
-      slice.hunks,
+      hunks ?? slice.hunks,
       {
         annotations: annotationsFor(chapter, file),
       marks: chapter.attention.filter((m) => m.file === file),
@@ -701,10 +734,62 @@ function wireSession(session, route = null) {
     } else holder.innerHTML = `<div class="banner">binary file — no textual diff</div>`;
   };
 
+  // full-file toggle (task 023, ux §3.2): swap the block between diff view
+  // and the whole file padded by the adapter from /api/file content (no new
+  // endpoint, no schema change). Deleted files have no head content — stay in
+  // diff view. Also used by the holder mount loop below, so the mode survives
+  // renderSession re-renders (viewed PATCH etc. re-fetch the padded content).
+  const rebuildHolder = (chapter, file) => {
+    const key = viewedKey(chapter.id, file);
+    const holder = forceOpen(chapter.id, file); // full-file mode implies open
+    const inst = diffs.get(key);
+    if (inst) {
+      inst.el.remove();
+      diffs.delete(key);
+    }
+    if (!holder) return;
+    const slice = chapter.files.find((s) => s.file === file);
+    if (!slice || slice.status === "deleted") return buildDiff(holder, chapter, file);
+    get(`/api/file?ref=${encodeURIComponent(current.head)}&path=${encodeURIComponent(file)}`)
+      .then(({ content }) =>
+        buildDiff(
+          holder, chapter, file,
+          fullFileHunks(slice.hunks, content.replace(/\n$/, "").split("\n")),
+        ),
+      )
+      .catch(() => {
+        fullFileMode.delete(key); // no content → back to plain diff view
+        buildDiff(holder, chapter, file);
+      });
+  };
+  const setFullFile = (chapter, file, on) => {
+    const key = viewedKey(chapter.id, file);
+    if (on) fullFileMode.add(key);
+    else fullFileMode.delete(key);
+    const head = [...document.querySelectorAll(".file-head")].find(
+      (h) => h.dataset.chapter === chapter.id && h.dataset.file === file,
+    );
+    if (head) {
+      const btn = head.querySelector(".file-full");
+      if (btn) btn.textContent = on ? "diff view" : "full file";
+      head.querySelector(".file-chevron").textContent = "▾";
+    }
+    rebuildHolder(chapter, file);
+  };
+  document.querySelectorAll(".file-full").forEach((btn) => {
+    btn.onclick = () => {
+      const chapter = current.chapters.find((c) => c.id === btn.dataset.chapter);
+      if (chapter)
+        setFullFile(chapter, btn.dataset.file, !isFullFile(chapter.id, btn.dataset.file));
+    };
+  });
+
   document.querySelectorAll(".diff-holder").forEach((holder) => {
     const chapter = current.chapters.find((c) => c.id === holder.dataset.chapter);
     const file = holder.dataset.file;
-    if (chapter) buildDiff(holder, chapter, file);
+    if (!chapter) return;
+    if (isFullFile(chapter.id, file)) rebuildHolder(chapter, file);
+    else buildDiff(holder, chapter, file);
   });
 
   const restampMarks = (chapter) => {
@@ -828,23 +913,40 @@ function wireSession(session, route = null) {
   });
 
   // deep links (spec §17): scroll to + flash the target — renderSession
-  // already resolved the owning chapter, so the target diff is mounted
+  // already resolved the owning chapter, so the target diff is mounted.
+  // A target line outside every hunk (an unchanged-line comment, §13.3.5) is
+  // only rendered in full-file mode — enter it first; scrollFlash's retry
+  // loop covers the async fetch+mount. The instance is re-fetched per tick:
+  // the full-file swap replaces the mounted diff.
   if (route?.target) {
     if (route.target === "line") {
       // diffs are keyed chapter\u0000file (multi-file chapters, task 009);
       // force the block open first — a viewed holder would be hidden
       forceOpen(route.chapterId, route.file);
-      const inst = diffs.get(`${route.chapterId}\u0000${route.file}`);
-      if (inst)
-        scrollFlash(() =>
-          queryRow(inst, "new", route.line) ?? queryRow(inst, "old", route.line),
-        );
+      const chapter = current.chapters.find((c) => c.id === route.chapterId);
+      if (
+        chapter &&
+        !isFullFile(route.chapterId, route.file) &&
+        !lineInSlice(chapter, route.file, "new", route.line) &&
+        !lineInSlice(chapter, route.file, "old", route.line)
+      )
+        setFullFile(chapter, route.file, true);
+      const key = `${route.chapterId}\u0000${route.file}`;
+      scrollFlash(() =>
+        queryRow(diffs.get(key), "new", route.line) ?? queryRow(diffs.get(key), "old", route.line),
+      );
     } else if (current.comments.some((c) => c.id === route.target)) {
       const comment = current.comments.find((c) => c.id === route.target);
       forceOpen(comment.chapterId, comment.file);
-      scrollFlash(() =>
-        queryComment(diffs.get(`${comment.chapterId}\u0000${comment.file}`), comment.id),
-      );
+      const chapter = current.chapters.find((c) => c.id === comment.chapterId);
+      if (
+        chapter &&
+        !isFullFile(comment.chapterId, comment.file) &&
+        !lineInSlice(chapter, comment.file, comment.side, comment.line)
+      )
+        setFullFile(chapter, comment.file, true);
+      const key = `${comment.chapterId}\u0000${comment.file}`;
+      scrollFlash(() => queryComment(diffs.get(key), comment.id));
     } else {
       scrollFlash(() => document.querySelector(`.chapter[data-chapter="${route.target}"]`));
     }

@@ -103,10 +103,15 @@ export function remapComment(
       bestScore = s;
     }
   }
-  const chapter = chapterForLine(chapters, comment.anchor.file, best + 1);
+  // inside a rendered hunk → that chapter; outside every hunk but still
+  // matching → an unchanged-line comment (spec §13.3.5), pinned and visible
+  // only in full-file mode (§18) — hosted in the first chapter carrying the
+  // file so the frontend has a block to mount. No host at all (the file's
+  // change was fully reverted) → orphaned: nothing renders it anywhere.
+  const chapter =
+    chapterForLine(chapters, comment.anchor.file, best + 1) ??
+    chapters.find((c) => c.files.some((s) => s.file === comment.anchor.file));
   if (!chapter) {
-    // matched, but the line no longer sits inside any rendered hunk —
-    // hiding it there would strand it outside the diff (spec §13.3.5)
     comment.orphaned = true;
     return "orphaned";
   }

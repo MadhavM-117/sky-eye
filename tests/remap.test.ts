@@ -107,10 +107,21 @@ test("no match in the new file → orphaned, anchor kept", () => {
   assert.deepEqual(c.anchor, anchor); // untouched
 });
 
-test("matched line outside every rebuilt hunk → orphaned (never hidden)", () => {
+test("matched line outside every rebuilt hunk → pinned unchanged-line comment (§13.3.5)", () => {
   const c = comment({ text: "ctx", line: 2 });
   // matches at line 2, but the rebuilt chapter only renders lines 5–6
   const outcome = remapComment(c, lines("pre", "ctx", "filler", "ctx", "in"), [chapter("f.txt", [[4, 2]])]);
+  assert.equal(outcome, "repinned");
+  assert.equal(c.line, 2);
+  assert.equal(c.chapterId, "ch-fixed"); // hosted in the chapter carrying the file
+  assert.equal(c.orphaned, undefined);
+});
+
+test("matched line outside every hunk, file in no chapter at all → orphaned", () => {
+  const c = comment({ text: "ctx", line: 2 });
+  // the file's change was fully reverted: no chapter carries a slice for it
+  const other = chapter("g.txt", [[1, 2]]);
+  const outcome = remapComment(c, lines("pre", "ctx", "filler"), [other]);
   assert.equal(outcome, "orphaned");
   assert.equal(c.orphaned, true);
 });

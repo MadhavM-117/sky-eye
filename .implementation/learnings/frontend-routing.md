@@ -13,3 +13,7 @@
 - UI smoke test without a browser driver: `chromium --headless --dump-dom
   --virtual-time-budget=10000 'http://…/#<hash>'` against the dev server —
   fragments are honored, pierre renders, output greppable for markers.
+  Caveat (task 023): dump-dom does NOT serialize pierre's shadow roots —
+  diff rows aren't greppable; light-DOM markers (button labels, banners,
+  narrative text) are the only observable state. Verify rendering math via
+  node probes on the pure adapter functions instead.

@@ -57,6 +57,45 @@ export function patchText(file, hunks) {
   return lines.join("\n") + "\n";
 }
 
+// Full-file mode (task 023, spec §18): pad the stored hunks into ONE hunk
+// covering the whole file, so the same FileDiff renders everything with the
+// changed lines still marked. Gap lines are ctx taken from the head file
+// content (unchanged by construction); old/new counters advance per line
+// type, so both columns number correctly. oldTotal derives exactly:
+// newTotal − adds + dels. Pure, fixture-tested.
+export function fullFileHunks(hunks, fileLines) {
+  const newTotal = fileLines.length;
+  if (newTotal === 0 || hunks.length === 0) return hunks; // nothing to pad
+  let adds = 0, dels = 0;
+  for (const h of hunks)
+    for (const l of h.lines) {
+      if (l.type === "add") adds++;
+      else if (l.type === "del") dels++;
+    }
+  const oldTotal = newTotal - adds + dels;
+  const lines = [];
+  let oldN = 1, newN = 1;
+  const ctx = () => {
+    lines.push({ type: "ctx", oldLine: oldN, newLine: newN, text: fileLines[newN - 1] });
+    oldN++; newN++;
+  };
+  for (const h of hunks) {
+    while (newN < h.newStart) ctx();
+    for (const l of h.lines) {
+      lines.push(l);
+      if (l.type === "add") newN++;
+      else if (l.type === "del") oldN++;
+      else { oldN++; newN++; }
+    }
+  }
+  while (newN <= newTotal) ctx();
+  return [{
+    oldStart: oldTotal === 0 ? 0 : 1, oldLines: oldTotal,
+    newStart: 1, newLines: newTotal,
+    lines,
+  }];
+}
+
 // Chapter hunks → FileDiffMetadata (pierre's render input), or null when the
 // chapter carries no textual diff (binary files).
 export function fileDiffMetadata(file, hunks) {
