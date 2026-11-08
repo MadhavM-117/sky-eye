@@ -14,6 +14,7 @@ import {
   rerunChapter,
   sharedSystemPrompt,
 } from "../src/narrate.ts";
+import { ensureAnalyzed } from "../src/analyze.ts";
 import { ApiError } from "../src/cli.ts";
 import type { Chapter, LlmRequest, Session } from "../src/types.ts";
 
@@ -245,4 +246,71 @@ test("rerunChapter: unknown chapter → 404", async () => {
     rerunChapter(root(), "git", session(), "nope", false, {}),
     (e: ApiError) => e.status === 404,
   );
+});
+
+// ---- eager analysis (task 020, spec §16.2/§16.7) ---------------------------
+
+test("ensureAnalyzed: fills only unanalyzed chapters, never overwrites", async () => {
+  const s = session();
+  s.chapters[1].narrative = "existing";
+  s.chapters[1].narrativeEdited = true;
+  let calls = 0;
+  const a = adapter("shared:1", (req) =>
+    req.system.includes("order the chapters")
+      ? "{}" // ordering call: malformed reply → path order, not counted
+      : JSON.stringify({ narrative: `n${++calls}`, marks: [] }),
+  );
+  const out = await ensureAnalyzed(root(), "git", s, { narrate: a, classify: a });
+  assert.equal(out.chapters[0].narrative, "n1");
+  assert.equal(out.chapters[1].narrative, "existing"); // edited narrative untouched
+  assert.equal(calls, 1);
+  assert.ok(out.updatedAt > 1); // persisted
+});
+
+test("ensureAnalyzed: no adapters → session unchanged, never blocks (§16.1)", async () => {
+  const s = session();
+  const out = await ensureAnalyzed(root(), "git", s, {});
+  assert.equal(out.chapters[0].narrative, "unanalyzed");
+});
+
+test("ensureAnalyzed: failed narrate call → chapter stays unanalyzed", async () => {
+  const s = session();
+  const a = adapter("shared:1", () => "!");
+  const out = await ensureAnalyzed(root(), "git", s, { narrate: a, classify: a });
+  assert.equal(out.chapters[0].narrative, "unanalyzed");
+});
+
+test("ensureAnalyzed: ordering call reorders chapters in place (§16.7)", async () => {
+  const s = session();
+  const a = adapter("shared:1", (req) =>
+    req.system.includes("order the chapters")
+      ? JSON.stringify({ order: [s.chapters[1].id, s.chapters[0].id] })
+      : JSON.stringify({ narrative: "n", marks: [] }),
+  );
+  const out = await ensureAnalyzed(root(), "git", s, { narrate: a, classify: a });
+  assert.deepEqual(out.chapters.map((c) => c.id), ["other", "abc123"]);
+});
+
+test("ensureAnalyzed: chunk task configured → ordering skipped, chunk order wins (§16.7)", async () => {
+  const s = session();
+  let orderCalls = 0;
+  const a = adapter("shared:1", () => JSON.stringify({ narrative: "n", marks: [] }));
+  const out = await ensureAnalyzed(root(), "git", s, {
+    narrate: a,
+    classify: a,
+    chunk: { ...a, call: async () => { orderCalls++; return "{}"; } },
+  });
+  assert.equal(orderCalls, 0); // ordering call never fired
+  assert.deepEqual(out.chapters.map((c) => c.id), ["abc123", "other"]); // path order kept
+});
+
+test("ensureAnalyzed: malformed ordering reply → path order (degrade, don't fail)", async () => {
+  const s = session();
+  const a = adapter("shared:1", (req) =>
+    req.system.includes("order the chapters")
+      ? "this is not json"
+      : JSON.stringify({ narrative: "n", marks: [] }),
+  );
+  const out = await ensureAnalyzed(root(), "git", s, { narrate: a, classify: a });
+  assert.deepEqual(out.chapters.map((c) => c.id), ["abc123", "other"]);
 });

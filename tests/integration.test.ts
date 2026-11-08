@@ -720,6 +720,37 @@ test("rerun: no config → skip; custom adapter → narrative + confirm guard (s
   });
 });
 
+test("creation is eager: chapters fully analysed before the session is served (spec §16.2)", async () => {
+  await withServer(async (_port, repo) => {
+    const dir = path.join(repo, ".sky-watch");
+    fs.mkdirSync(dir, { recursive: true });
+    const script = path.join(dir, "adapter.sh");
+    fs.writeFileSync(
+      script,
+      `#!/bin/sh\nnode -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({text:"generated narrative"}))})'`,
+    );
+    fs.chmodSync(script, 0o755);
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ tasks: { narrate: { command: script } } }),
+    );
+
+    const refs = await get("/api/refs");
+    const created = await mut("POST", "/api/sessions", {
+      base: refs.body.defaultBase.id,
+      head: refs.body.head.id,
+    });
+    assert.equal(created.status, 201);
+    assert.ok(created.body.chapters.length > 0);
+    assert.ok(
+      created.body.chapters.every(
+        (c: { narrative: string }) => c.narrative === "generated narrative",
+      ),
+      "every chapter narrated by the create call itself",
+    );
+  });
+});
+
 test("buildDiff is config-proof against diff.mnemonicPrefix", async () => {
   // task 012: a user's mnemonicPrefix config would otherwise make git emit
   // c/w prefixes that parseUnifiedDiff can't handle (silent 0-file parse)

@@ -77,8 +77,10 @@ Rendered top to bottom:
    Creating a review runs the full analysis server-side — the diff is
    chunked into chapters and every chapter gets its narrative and marks
    before the session opens (spec §16.2) — so the button is disabled and a
-   banner shows "analyzing…" with per-chapter progress
-   ("chapter 3 of 12"). Without an LLM configured this is near-instant.
+   banner shows "analyzing…" with an indeterminate spinner (per-chapter
+   live progress is deferred — creation latency hasn't earned the
+   streaming machinery yet). Without an LLM configured this is
+   near-instant.
 3. **Existing sessions** — human label (if set, else the id), branch
    aliases, `updatedAt`, open-comment count, and a reviewed chip; click to
    open.

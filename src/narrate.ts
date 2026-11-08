@@ -183,7 +183,7 @@ export async function rerunChapter(
 
   const a = adapters ?? { narrate: resolveTask(root, "narrate"), classify: resolveTask(root, "classify") };
   if (!a.narrate && !a.classify) return session; // no config → rules-only world
-  await narrateOne(a, root, kind, session, chapter);
+  await narrateChapter(a, root, kind, session, chapter);
   return persistSession(root, session);
 }
 
@@ -210,14 +210,15 @@ export async function rerunAll(
 
   const a = adapters ?? { narrate: resolveTask(root, "narrate"), classify: resolveTask(root, "classify") };
   if (!a.narrate && !a.classify) return persistSession(root, session); // rules/classifier only
-  for (const chapter of session.chapters) await narrateOne(a, root, kind, session, chapter);
+  for (const chapter of session.chapters) await narrateChapter(a, root, kind, session, chapter);
   return persistSession(root, session);
 }
 
 // Shared per-chapter narration core (extracted from rerunChapter): head-
 // contents context, shared vs separate calls, mark merging. Mutates the
-// chapter in place; persistence is the caller's job.
-async function narrateOne(
+// chapter in place; persistence is the caller's job. Exported for
+// analyze.ts's eager pass (§16.2) — rerun and eager analysis share it.
+export async function narrateChapter(
   a: Adapters,
   root: string,
   kind: "git" | "jj",
@@ -284,4 +285,73 @@ async function narrateOne(
       }
     }
   }
+}
+
+// ---- chapter ordering (§16.7) ----------------------------------------------
+
+export function orderSystemPrompt(): string {
+  return (
+    "You order the chapters of a code review so a reviewer builds " +
+    "understanding: foundations and data-model changes before their " +
+    "consumers, related chapters adjacent. Reply with ONLY JSON: " +
+    '{"order": ["<id>", ...]} — every id exactly once, in review-reading order.'
+  );
+}
+
+// changed-line counts across all slices (rail summary + ordering prompt)
+export function chapterCounts(chapter: Chapter): [add: number, del: number] {
+  return chapter.files.reduce<[number, number]>(
+    ([a, d], s) =>
+      s.hunks.reduce(
+        ([sa, sd], h) => [
+          sa + h.lines.filter((l) => l.type === "add").length,
+          sd + h.lines.filter((l) => l.type === "del").length,
+        ],
+        [a, d],
+      ),
+    [0, 0],
+  );
+}
+
+// Pure validation (§16.7): the reply must be a permutation — unknown ids
+// dropped, duplicates first-wins, chapters the model missed keep path order
+// appended at the end; malformed reply → path order (degrade, don't fail).
+export function parseOrderResponse(raw: string, chapters: Chapter[]): string[] {
+  const pathOrder = chapters.map((c) => c.id);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return pathOrder;
+  }
+  const list = (parsed as { order?: unknown }).order;
+  if (!Array.isArray(list)) return pathOrder;
+  const known = new Set(pathOrder);
+  const seen = new Set<string>();
+  for (const id of list)
+    if (typeof id === "string" && known.has(id) && !seen.has(id)) seen.add(id);
+  return [...seen, ...pathOrder.filter((id) => !seen.has(id))];
+}
+
+// One cheap call over the chapter list — ids, titles, counts, statuses; no
+// diff text (the narratives carry the semantics). Reorders session.chapters
+// in place. No narrate adapter → classify; neither → no-op.
+export async function orderChapters(session: Session, a: Adapters): Promise<void> {
+  const adapter = a.narrate ?? a.classify;
+  if (!adapter || session.chapters.length < 2) return;
+  const line = (c: Chapter) => {
+    const [add, del] = chapterCounts(c);
+    const statuses = [...new Set(c.files.map((s) => s.status))].join("/");
+    return `- id=${c.id} — ${chapterTitle(c)} (${c.files.length} file${c.files.length === 1 ? "" : "s"}, +${add} −${del}, ${statuses})`;
+  };
+  const text = await call(adapter, {
+    task: "narrate",
+    system: orderSystemPrompt(),
+    prompt:
+      "Chapters of one code review, in current (path) order:\n" +
+      session.chapters.map(line).join("\n"),
+  });
+  if (text === undefined) return;
+  const rank = new Map(parseOrderResponse(text, session.chapters).map((id, i) => [id, i]));
+  session.chapters.sort((x, y) => (rank.get(x.id) ?? 0) - (rank.get(y.id) ?? 0));
 }

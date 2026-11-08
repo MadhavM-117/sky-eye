@@ -21,6 +21,14 @@ import { renderExplorer } from "./explorer.js";
 
 const app = document.getElementById("app");
 
+// one-chapter-at-a-time view (ux §3.3): module state that survives re-
+// renders within a session — active chapter, rail collapse, pending
+// orphan-triage re-pin; reset on session switch in render()
+let activeChapterId = null;
+let activeSid = null;
+let railCollapsed = false;
+let pendingTriage = null;
+
 // hash forms (spec §17): "" | "#<sid>" | "#<sid>/<commentId>"
 //   | "#<sid>/<chapterId>/<encFile>/<line>" | "#<sid>/explorer/<encPath>§<side>"
 // (paths are percent-encoded, so no raw slashes inside the encoded part)
@@ -70,6 +78,11 @@ async function render() {
       });
     }
     const session = await get(`/api/sessions/${encodeURIComponent(route.sid)}`);
+    if (activeSid !== route.sid) {
+      activeSid = route.sid;
+      activeChapterId = null;
+      pendingTriage = null;
+    }
     renderSession(session, route);
   } catch (e) {
     app.innerHTML = `<div class="banner error">error: ${esc(e?.error ?? e?.message ?? e)}</div>
@@ -147,8 +160,10 @@ async function renderFirst() {
     const label =
       refs.branches.find((b) => b.id === base)?.name ??
       (refs.defaultBase?.id === base ? refs.defaultBase.label : undefined);
-    // semantic chunking (§8a) can make creation slow — spinner + banner
-    // instead of a dead button (same pattern as the rerun-all banner)
+    // semantic chunking (§8a) + eager analysis (§16.2) make creation slow —
+    // spinner + banner instead of a dead button (same pattern as rerun-all)
+    // shortcut: indeterminate progress only — live per-chapter progress when
+    // creation latency annoys (spec §16.2, ux §1.5)
     const btn = document.getElementById("create");
     btn.disabled = true;
     btn.textContent = "creating…";
@@ -223,18 +238,50 @@ const short = (id) => (id.length > 12 ? id.slice(0, 12) : id);
 
 // ---- session view ------------------------------------------------------
 
+// changed-line counts per slice / per chapter (rail + chapter head)
+const sliceStats = (s) =>
+  s.hunks.reduce(
+    ([a, d], h) => [
+      a + h.lines.filter((l) => l.type === "add").length,
+      d + h.lines.filter((l) => l.type === "del").length,
+    ],
+    [0, 0],
+  );
+const chapterStats = (c) => {
+  const out = [c.files.length, 0, 0];
+  for (const s of c.files) {
+    const [a, d] = sliceStats(s);
+    out[1] += a;
+    out[2] += d;
+  }
+  return out;
+};
+const statsHtml = (add, del) =>
+  `${del || !add ? `<span class="del">−${del}</span> ` : ""}<span class="add">+${add}</span>`;
+
 function renderSession(session, route = null) {
-  shell(session.label ?? session.id, "");
+  // deep links (§17) open the owning chapter: a line target names it, a
+  // comment target rides the comment's chapterId, a chapter target is it
+  let target = null;
+  if (route?.target === "line") target = route.chapterId;
+  else if (route?.target) {
+    const c = session.comments.find((c) => c.id === route.target);
+    if (c) target = c.chapterId;
+    else if (session.chapters.some((ch) => ch.id === route.target)) target = route.target;
+  }
+  if (target && session.chapters.some((c) => c.id === target)) activeChapterId = target;
+  const active =
+    session.chapters.find((c) => c.id === activeChapterId) ?? session.chapters[0];
+  activeChapterId = active?.id ?? null;
+
   const headLabel = session.headRef ?? short(session.head);
   const baseLabel = session.baseRef ?? short(session.base);
   const openCount = session.comments.filter((c) => !c.resolved).length;
 
-  const chaptersHtml =
-    session.chapters.length === 0
-      ? `<p class="empty">nothing to review for this comparison</p>`
-      : session.chapters
-          .map((c, i) => chapterHtml(session, c, i))
-          .join("");
+  // the body renders one chapter (ux §3.3); the rail is the navigation
+  const chaptersHtml = active
+    ? chapterHtml(session, active, session.chapters.indexOf(active))
+    : `<p class="empty">nothing to review for this comparison</p>`;
 
   shell(session.label ?? session.id, `
     <header>
@@ -254,9 +301,66 @@ function renderSession(session, route = null) {
       <button id="delete-review" title="delete permanently">delete</button>
     </header>
     ${bannersHtml(session)}
-    <div class="chapters">${chaptersHtml}</div>`);
+    <div class="session-layout">
+      ${railHtml(session)}
+      <div class="chapters">${chaptersHtml}</div>
+    </div>`);
 
   wireSession(session, route);
+}
+
+// chapter rail (ux §3.3): title, one-line narrative description, change
+// summary; the active row nests the chapter's file list
+function railHtml(session) {
+  const rows = session.chapters
+    .map((c, i) => {
+      const [files, add, del] = chapterStats(c);
+      const active = c.id === activeChapterId;
+      const desc =
+        !c.narrative || c.narrative === "unanalyzed"
+          ? "unanalyzed"
+          : (c.narrative.split("\n").find((l) => l.trim()) ?? "unanalyzed");
+      const fileList = active
+        ? `<ul class="rail-files">${c.files
+            .map((s) => {
+              const [sa, sd] = sliceStats(s);
+              return `<li data-file="${esc(s.file)}" title="scroll to this file's diff"><span class="status ${s.status}">${s.status}</span><span class="rail-file-path">${esc(s.file)}</span><span class="stats"><span class="add">+${sa}</span> <span class="del">−${sd}</span></span></li>`;
+            })
+            .join("")}</ul>`
+        : "";
+      return `<div class="rail-row${active ? " active" : ""}" data-chapter="${c.id}">
+        <div class="rail-title">chapter ${i + 1}${c.title ? `: ${esc(c.title)}` : ""}</div>
+        <div class="rail-desc">${esc(desc)}</div>
+        <div class="rail-meta">${files} file${files === 1 ? "" : "s"} · <span class="add">+${add}</span> <span class="del">−${del}</span></div>
+        ${fileList}
+      </div>`;
+    })
+    .join("");
+  return `<aside class="rail${railCollapsed ? " collapsed" : ""}">
+    <div class="rail-head"><span>chapters</span><button id="rail-toggle" title="collapse / expand the chapter rail">${railCollapsed ? "▸" : "◂"}</button></div>
+    ${rows}
+  </aside>`;
+}
+
+// scroll to + flash a target; retries while pierre's lazy grammar loading
+// re-renders rows after the first pass (deep links §17, rail file clicks)
+function scrollFlash(find) {
+  let tries = 0;
+  const tick = () => {
+    const target = find();
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      // Web Animations instead of a CSS class: pierre's diff rows live in
+      // its shadow root, where our stylesheet doesn't reach
+      target.animate?.(
+        [{ backgroundColor: "var(--warning, #ffd452)" }, { backgroundColor: "transparent" }],
+        { duration: 1200, easing: "ease-out" },
+      );
+      return;
+    }
+    if (++tries < 20) setTimeout(tick, 100);
+  };
+  tick();
 }
 
 const copyLink = (fragment) => {
@@ -301,13 +405,7 @@ const triageItem = (c) => `
   </div>`;
 
 function chapterHtml(session, c, index) {
-  const [add, del] = c.files.reduce(
-    ([a, d], s) => [
-      a + s.hunks.reduce((n, h) => n + h.lines.filter((l) => l.type === "add").length, 0),
-      d + s.hunks.reduce((n, h) => n + h.lines.filter((l) => l.type === "del").length, 0),
-    ],
-    [0, 0],
-  );
+  const [, add, del] = chapterStats(c);
   // a chapter may span files (spec §9.3): one diff block per file slice
   const blocks = c.files
     .map(
@@ -322,9 +420,10 @@ function chapterHtml(session, c, index) {
   return `
   <section class="chapter" data-chapter="${c.id}">
     <h2 class="chapter-head">
-      <button class="collapse" data-i="${index}">▾</button>
+      <button class="chapter-prev" title="previous chapter" ${index === 0 ? "disabled" : ""}>◀</button>
+      <button class="chapter-next" title="next chapter" ${index === session.chapters.length - 1 ? "disabled" : ""}>▶</button>
       <span class="chapter-title">chapter ${index + 1}${c.title ? `: ${esc(c.title)}` : ""}</span>
-      <span class="stats">${del || !add ? `<span class="del">−${del}</span> ` : ``}<span class="add">+${add}</span></span>
+      <span class="stats">${statsHtml(add, del)}</span>
       <button class="narr-edit" data-i="${index}" title="edit narrative">✎ edit</button>
       <button class="rerun" data-i="${index}" title="re-generate narrative + marks">↻</button>
     </h2>
@@ -355,9 +454,6 @@ function wireSession(session, route = null) {
   let current = session;
   // one composer at a time (design A); diffs holds pierre instances per chapter
   const composer = { state: null };
-  // pending orphan-triage re-pin (spec §13.4): next gutter click on that
-  // file's diff re-pins instead of opening the composer
-  let triage = null;
   const diffs = new Map();
 
   const refetch = async () => {
@@ -467,9 +563,9 @@ function wireSession(session, route = null) {
         // while a triage re-pin is pending, the click re-pins instead
         onLineNumberClick: ({ lineNumber, annotationSide }) => {
           const side = selectionSide({ annotationSide });
-          if (triage && triage.file === file) {
-            const comment = triage;
-            triage = null;
+          if (pendingTriage && pendingTriage.file === file) {
+            const comment = pendingTriage;
+            pendingTriage = null;
             renderTriage();
             patchComment(comment, {
               reanchor: { chapterId: chapter.id, file, side, line: lineNumber },
@@ -531,13 +627,9 @@ function wireSession(session, route = null) {
     }
   };
 
-  // M7 (§16.2): lazy narrative generation — the server generates on first
-  // request, so fire one rerun per still-unanalyzed chapter on session open
-  // (chapters render expanded, so "first expansion" is here). Sequential:
-  // each response refreshes `current`, keeping lastWriteAt fresh for any
-  // concurrent narrative edit PATCH. 409 needsConfirm (edited narrative)
-  // asks before overwriting (§10). While a rerun runs, the chapter shows a
-  // loading indicator and its edit button is hidden (§18).
+  // narratives are generated eagerly by the server (§16.2) — the ↻ button
+  // below is manual regeneration only. While a rerun runs, the chapter
+  // shows a loading indicator and its edit button is hidden (§18).
   const narrating = new Set();
   const narrBox = (chapterId) =>
     document.querySelector(`.narrative-box[data-chapter="${chapterId}"]`);
@@ -579,8 +671,6 @@ function wireSession(session, route = null) {
       narrating.delete(chapterId);
     }
   };
-  for (const c of current.chapters.filter((c) => c.narrative === "unanalyzed"))
-    if (narrBox(c.id)?.dataset.editing !== "true") rerunChapterUi(c.id);
   document.querySelectorAll("button.rerun").forEach((btn) => {
     btn.onclick = () => {
       const chapter = current.chapters[Number(btn.dataset.i)];
@@ -594,7 +684,7 @@ function wireSession(session, route = null) {
   // while the sequential LLM loop runs: disabled button + progress banner,
   // plus the per-chapter "analyzing…" indicator (same pattern as rerun).
   document.getElementById("rerun-all")?.addEventListener("click", async () => {
-    if (narrating.size) return; // lazy first-run narration already in flight
+    if (narrating.size) return; // a manual rerun is already in flight
     const edited = current.chapters.some((c) => c.narrativeEdited);
     if (edited && !confirm("regenerating overwrites your edited narratives — regenerate all?")) return;
     const btn = document.getElementById("rerun-all");
@@ -645,42 +735,23 @@ function wireSession(session, route = null) {
     }
   });
 
-  // deep links (spec §17): scroll to + flash the target; retry because lazy
-  // grammar loading can re-render rows after the first pass
+  // deep links (spec §17): scroll to + flash the target — renderSession
+  // already resolved the owning chapter, so the target diff is mounted
   if (route?.target) {
-    const tryScroll = (find) => {
-      let tries = 0;
-      const tick = () => {
-        const target = find();
-        if (target) {
-          target.scrollIntoView({ block: "center" });
-          // Web Animations instead of a CSS class: pierre's diff rows live in
-          // its shadow root, where our stylesheet doesn't reach
-          target.animate?.(
-            [{ backgroundColor: "var(--warning, #ffd452)" }, { backgroundColor: "transparent" }],
-            { duration: 1200, easing: "ease-out" },
-          );
-          return;
-        }
-        if (++tries < 20) setTimeout(tick, 100);
-      };
-      tick();
-    };
     if (route.target === "line") {
       // diffs are keyed chapter\u0000file (multi-file chapters, task 009)
       const inst = diffs.get(`${route.chapterId}\u0000${route.file}`);
       if (inst)
-        tryScroll(() =>
+        scrollFlash(() =>
           queryRow(inst, "new", route.line) ?? queryRow(inst, "old", route.line),
         );
     } else if (current.comments.some((c) => c.id === route.target)) {
       const comment = current.comments.find((c) => c.id === route.target);
-      tryScroll(() =>
+      scrollFlash(() =>
         queryComment(diffs.get(`${comment.chapterId}\u0000${comment.file}`), comment.id),
       );
     } else {
-      const chapter = current.chapters.find((c) => c.id === route.target);
-      diffs.get(chapter?.id)?.el.scrollIntoView({ block: "start" });
+      scrollFlash(() => document.querySelector(`.chapter[data-chapter="${route.target}"]`));
     }
   }
 
@@ -694,17 +765,24 @@ function wireSession(session, route = null) {
       el.remove();
       return;
     }
-    el.innerHTML = triage
-      ? `click a line in the <strong>${esc(triage.file)}</strong> diff to re-pin “${esc(triage.text)}” <button id="triage-cancel">cancel</button>`
+    el.innerHTML = pendingTriage
+      ? `click a line in the <strong>${esc(pendingTriage.file)}</strong> diff to re-pin “${esc(pendingTriage.text)}” <button id="triage-cancel">cancel</button>`
       : `${orphans.length} comment${orphans.length === 1 ? "" : "s"} need re-pinning${orphans.map(triageItem).join("")}`;
     el.querySelectorAll(".triage-repin").forEach((b) => {
       b.onclick = () => {
-        triage = current.comments.find((c) => c.id === b.dataset.comment);
+        pendingTriage = current.comments.find((c) => c.id === b.dataset.comment);
         renderTriage();
         const chapter = current.chapters.find((c) =>
-          c.files.some((s) => s.file === triage.file),
+          c.files.some((s) => s.file === pendingTriage.file),
         );
-        diffs.get(`${chapter?.id}\u0000${triage.file}`)?.el.scrollIntoView({ block: "center" });
+        // one-chapter view: the file's chapter may not be mounted — switch
+        // to it (the new render's renderTriage still shows the pending re-pin)
+        if (chapter && chapter.id !== activeChapterId) {
+          activeChapterId = chapter.id;
+          renderSession(current);
+          return;
+        }
+        scrollFlash(() => diffs.get(`${chapter?.id}\u0000${pendingTriage.file}`)?.el);
       };
     });
     el.querySelectorAll(".triage-resolve").forEach((b) => {
@@ -717,7 +795,7 @@ function wireSession(session, route = null) {
     const cancel = el.querySelector("#triage-cancel");
     if (cancel)
       cancel.onclick = () => {
-        triage = null;
+        pendingTriage = null;
         renderTriage();
       };
   };
@@ -736,8 +814,46 @@ function wireSession(session, route = null) {
       }
     };
 
-  document.querySelectorAll(".collapse").forEach((btn) => {
-    btn.onclick = () => btn.closest(".chapter").classList.toggle("collapsed");
+  // chapter navigation (ux §3.3): prev/next in the chapter head, rail rows
+  // switch chapters, file rows scroll to the mounted diff block, toggle
+  // collapses the rail
+  const goChapter = (delta) => {
+    const i = current.chapters.findIndex((c) => c.id === activeChapterId);
+    const next = current.chapters[i + delta];
+    if (!next) return;
+    activeChapterId = next.id;
+    renderSession(current);
+  };
+  document.querySelectorAll(".chapter-prev").forEach((btn) => {
+    btn.onclick = () => goChapter(-1);
+  });
+  document.querySelectorAll(".chapter-next").forEach((btn) => {
+    btn.onclick = () => goChapter(1);
+  });
+  document.querySelectorAll(".rail-row").forEach((row) => {
+    row.onclick = (ev) => {
+      if (ev.target.closest(".rail-files")) return; // file click handles itself
+      if (row.dataset.chapter !== activeChapterId) {
+        activeChapterId = row.dataset.chapter;
+        renderSession(current);
+      }
+    };
+  });
+  document.querySelectorAll(".rail-files li").forEach((li) => {
+    li.onclick = () => {
+      const cid = li.closest(".rail-row")?.dataset.chapter;
+      scrollFlash(() =>
+        [...document.querySelectorAll(".diff-holder")].find(
+          (h) => h.dataset.chapter === cid && h.dataset.file === li.dataset.file,
+        ),
+      );
+    };
+  });
+  document.getElementById("rail-toggle")?.addEventListener("click", () => {
+    railCollapsed = !railCollapsed;
+    document.querySelector(".rail")?.classList.toggle("collapsed", railCollapsed);
+    const t = document.getElementById("rail-toggle");
+    if (t) t.textContent = railCollapsed ? "▸" : "◂";
   });
 
   // archive / delete (task 017, spec §10): archive leaves the session list

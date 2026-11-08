@@ -114,9 +114,51 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 .stats { font-family: var(--font-mono); font-size: 11px; }
 .stats .add { color: var(--added); }
 .stats .del { color: var(--deleted); }
-.chapter.collapsed .chapter-body { display: none; }
-.chapter.collapsed .chapter-head { border-bottom: none; }
+.chapters { min-width: 0; }
 .chapter-body { padding: 10px; }
+.chapter-head button:disabled { opacity: 0.4; cursor: default; }
+
+/* one-chapter-at-a-time body + chapter rail (ux §3.3) */
+.session-layout { display: grid; grid-template-columns: 280px 1fr; gap: 12px; align-items: start; }
+.rail {
+  border: 1px solid var(--border); border-radius: 8px;
+  position: sticky; top: 8px; max-height: 85vh; overflow-y: auto;
+}
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; font-size: 12px; color: var(--muted);
+  text-transform: uppercase;
+  background: var(--header-bg); border-bottom: 1px solid var(--border);
+}
+.rail-head button { padding: 0 6px; border: none; background: none; color: var(--muted); }
+.rail-row { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.rail-row:last-child { border-bottom: none; }
+.rail-row:hover { background: var(--header-bg); }
+.rail-row.active { background: var(--header-bg); border-left: 3px solid var(--accent); padding-left: 7px; }
+.rail-title { font-weight: 600; font-size: 13px; }
+.rail-desc {
+  color: var(--muted); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rail-meta { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-top: 2px; }
+.rail-meta .add { color: var(--added); }
+.rail-meta .del { color: var(--deleted); }
+.rail-files {
+  list-style: none; margin: 6px 0 0; padding: 6px 0 0;
+  border-top: 1px dashed var(--border);
+}
+.rail-files li {
+  display: flex; gap: 6px; align-items: baseline;
+  font-size: 12px; padding: 2px 0; cursor: pointer;
+}
+.rail-files li:hover .rail-file-path { color: var(--accent); }
+.rail-file-path {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  direction: rtl; text-align: left; flex: 1;
+}
+.rail-files li .stats { flex-shrink: 0; }
+.rail.collapsed .rail-row, .rail.collapsed .rail-head span { display: none; }
+.rail.collapsed { max-height: none; }
 .narrative {
   width: 100%; font: 13px/1.5 var(--font-sans);
   border: 1px dashed var(--border); border-radius: 6px;

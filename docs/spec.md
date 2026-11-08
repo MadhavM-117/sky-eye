@@ -583,8 +583,9 @@ missing key for a task → **task skipped, never blocks the session**
   remains for manual regeneration only.
 - **Never blocks on the LLM layer (§16.1 rule):** no config, or a
   failed/malformed call for a chapter → that chapter stays "unanalyzed"
-  (rules marks only) and the pipeline still completes; the UI banner shows
-  per-chapter progress (ux §1.5). Creation is as slow as the full analysis
+  (rules marks only) and the pipeline still completes; the UI shows an
+  indeterminate "analyzing…" banner (ux §1.5; per-chapter live progress
+  deferred until creation latency earns it). Creation is as slow as the full analysis
   (chunk call + one narrate call per chapter, or the shared call, §16.3) —
   accepted; the one-chapter-at-a-time view (ux §3.3) needs the analysis up
   front to be readable.

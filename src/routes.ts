@@ -20,6 +20,7 @@ import {
 } from "./store.ts";
 import { checkStale, refreshSession, rechunkSession } from "./remap.ts";
 import { rerunAll, rerunChapter } from "./narrate.ts";
+import { ensureAnalyzed } from "./analyze.ts";
 
 route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
 
@@ -67,13 +68,18 @@ route("POST", "/api/sessions", async ({ root, kind, body }) => {
     b.baseLabel,
     b.headLabel,
   );
-  return { status: created ? 201 : 200, value: session };
+  if (!created) return { status: 200, value: session };
+  // eager analysis (§16.2): the served session is fully analysed before it
+  // is shown — degraded LLM config just leaves chapters "unanalyzed"
+  return { status: 201, value: await ensureAnalyzed(root, kind, session) };
 });
 
-// refresh (spec §13.2): in place for jj, successor session for git
-route("POST", "/api/sessions/:id/refresh", async ({ root, kind, params }) =>
-  refreshSession(root, kind, loadSession(root, sessionId(params.id))),
-);
+// refresh (spec §13.2): in place for jj, successor session for git — the
+// returned session (either kind) is analysed before it's shown (§16.2)
+route("POST", "/api/sessions/:id/refresh", async ({ root, kind, params }) => {
+  const r = await refreshSession(root, kind, loadSession(root, sessionId(params.id)));
+  return { ...r, session: await ensureAnalyzed(root, kind, r.session) };
+});
 
 route("PATCH", "/api/sessions/:id", ({ root, params, body }) => {
   const id = sessionId(params.id);
@@ -110,11 +116,15 @@ route("POST", "/api/sessions/:id/rerun-all", async ({ root, kind, params, body }
 // re-chunk (spec §8a): re-run the chapter grouping in place on the stored
 // diff; 409 needsConfirm guards edited narratives (chapter ids may move)
 route("POST", "/api/sessions/:id/rechunk", async ({ root, kind, params, body }) =>
-  rechunkSession(
+  ensureAnalyzed(
     root,
     kind,
-    loadSession(root, sessionId(params.id)),
-    (body as { confirm?: boolean }).confirm === true,
+    await rechunkSession(
+      root,
+      kind,
+      loadSession(root, sessionId(params.id)),
+      (body as { confirm?: boolean }).confirm === true,
+    ),
   ));
 
 // archive/delete (task 017, spec §10): archive moves the file into
