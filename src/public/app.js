@@ -300,23 +300,38 @@ function renderSession(session, route = null) {
     ? chapterHtml(session, active, session.chapters.indexOf(active))
     : `<p class="empty">nothing to review for this comparison</p>`;
 
+  // three-line header (task 022, ux §3.1): title / context / actions —
+  // each row keeps its own kind of information; primary actions visible,
+  // the rest in a "more" overflow menu; hover titles carry the side effects
   shell(title, `
-    <header>
-      <a href="#">sky-eye</a>
-      <span class="badge">${badge(session)}</span>
-      <span class="session-title" id="session-label" title="click to rename">${esc(title)}</span>
-      <button class="title-edit" title="edit review title">✎</button>
-      <span class="aliases">${esc(session.aliases.join(" "))}</span>
-      <span class="meta">${headLabel} → ${baseLabel}</span>
-      <span class="meta" id="open-count">${openCount} open comments</span>
-      <label class="reviewed-toggle"><input type="checkbox" id="reviewed" ${session.reviewed ? "checked" : ""}/> reviewed</label>
-      <a class="explorer-link" href="#${esc(session.id)}/explorer/§head">files</a>
-      <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
-      <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export">export</a>
-      <button id="rerun-all" title="re-generate marks + narratives for every chapter">regenerate</button>
-      <button id="rechunk" title="re-run the chapter grouping on the stored diff">re-group</button>
-      <button id="archive" title="move out of the session list (restorable from the first screen)">archive</button>
-      <button id="delete-review" title="delete permanently">delete</button>
+    <header class="session-header">
+      <div class="h-row h-title">
+        <a href="#">sky-eye</a>
+        <span class="session-title" id="session-label" title="click to rename">${esc(title)}</span>
+        <button class="title-edit" title="edit review title">✎</button>
+        <span class="badge">${badge(session)}</span>
+        <span class="aliases">${esc(session.aliases.join(" "))}</span>
+        <span class="meta" id="open-count">${openCount} open comments</span>
+      </div>
+      <div class="h-row h-context">
+        <span class="repo-path" title="repository under review">${esc(session.meta.repo)}</span>
+        <span class="meta">${headLabel} → ${baseLabel}</span>
+      </div>
+      <div class="h-row h-actions">
+        <button id="mark-reviewed" class="${session.reviewed ? "marked" : ""}" title="${session.reviewed ? "this review is marked reviewed — click to unmark" : "mark this review as reviewed"}">${session.reviewed ? "✓ reviewed" : "mark reviewed"}</button>
+        <a class="explorer-link" href="#${esc(session.id)}/explorer/§head" title="browse the repository's files">files</a>
+        <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
+        <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export" title="download this review as JSON">export</a>
+        <details class="more-menu">
+          <summary title="more actions">more ▾</summary>
+          <div class="menu">
+            <button id="rerun-all" title="re-generate marks + narratives for every chapter (overwrites edited narratives)">regenerate all</button>
+            <button id="rechunk" title="re-run the chapter grouping on the stored diff (chapter ids may move)">re-group</button>
+            <button id="archive" title="move out of the session list — restorable from the first screen">archive</button>
+            <button id="delete-review" title="delete this review permanently">delete</button>
+          </div>
+        </details>
+      </div>
     </header>
     ${bannersHtml(session)}
     <div class="session-layout">
@@ -1172,14 +1187,24 @@ function wireSession(session, route = null) {
   document.getElementById("session-label")?.addEventListener("click", startTitleEdit);
   document.querySelector(".title-edit")?.addEventListener("click", startTitleEdit);
 
-  document.getElementById("reviewed").onchange = async (ev) => {
+  // mark-reviewed button (task 022): toggles the reviewed state — no
+  // checkbox anywhere in the header; re-render shows the marked state
+  document.getElementById("mark-reviewed")?.addEventListener("click", async () => {
     try {
       current = await mut("PATCH", `/api/sessions/${encodeURIComponent(current.id)}`, {
         lastWriteAt: current.lastWriteAt,
-        reviewed: ev.target.checked,
+        reviewed: !current.reviewed,
       });
+      renderSession(current);
     } catch (e) {
       if (e?.status === 409 && confirm("session changed elsewhere — reload?")) location.reload();
     }
-  };
+  });
+
+  // overflow menu closes once an action is picked (the actions navigate or
+  // show their own banner — a lingering open menu hides the feedback)
+  document.querySelector(".more-menu .menu")?.addEventListener("click", () => {
+    const d = document.querySelector("details.more-menu");
+    if (d) d.open = false;
+  });
 }

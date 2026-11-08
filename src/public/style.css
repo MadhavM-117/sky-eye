@@ -60,6 +60,56 @@ header a { color: var(--fg); text-decoration: none; }
 .aliases { color: var(--muted); font-size: 12px; }
 .session-title { font-weight: 600; cursor: pointer; }
 .session-title:hover { color: var(--accent); }
+
+/* session header (task 022, ux §3.1): three stacked rows — title /
+   context / actions — instead of one crowded row; class-scoped so the
+   first screen's single-row header is untouched */
+header.session-header { display: block; }
+.session-header .h-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.session-header .h-row + .h-row { margin-top: 6px; }
+.session-header .h-context { color: var(--muted); font-size: 12px; }
+.session-header .h-actions { margin-top: 8px; }
+#mark-reviewed.marked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.more-menu { position: relative; }
+.more-menu summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.more-menu summary::-webkit-details-marker { display: none; }
+.more-menu .menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+}
+.more-menu .menu button {
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.more-menu .menu button:hover { background: var(--header-bg); }
 .empty { color: var(--muted); font-style: italic; }
 
 /* attention marks (task 009) render as glyphs stamped into pierre's gutter
