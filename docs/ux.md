@@ -74,10 +74,11 @@ Rendered top to bottom:
 2. **Compare picker** — "Review **[head]** against **[base dropdown]**" with
    the default base preselected, plus a "Create review" button. The
    dropdown groups: default base / bookmarks / branches / recent commits.
-   While the review is created (which can take a while when semantic
-   chunking is on — the diff is analyzed into chapters server-side, spec
-   §8a), the button is disabled and a banner shows
-   "analyzing diff into chapters…".
+   Creating a review runs the full analysis server-side — the diff is
+   chunked into chapters and every chapter gets its narrative and marks
+   before the session opens (spec §16.2) — so the button is disabled and a
+   banner shows "analyzing…" with per-chapter progress
+   ("chapter 3 of 12"). Without an LLM configured this is near-instant.
 3. **Existing sessions** — human label (if set, else the id), branch
    aliases, `updatedAt`, open-comment count, and a reviewed chip; click to
    open.
@@ -131,17 +132,20 @@ key survives a rebase and the session updates in place.
 
 ### 3.2 Body
 
-Chapters as an accordion, rendered **expanded** by default (a review is
-read top to bottom; collapsing is an optimization, not the default).
+The session body renders **one chapter at a time**; the chapter rail (§3.3)
+on the left navigates between chapters and lists the active chapter's
+files.
 
-- Collapsed chapter: title — the semantic chapter title when the chunk task
+- Chapter header: title — the semantic chapter title when the chunk task
   produced one (spec §8a), else the chapter's file list — plus one-line
-  narrative placeholder ("unanalyzed" until narratives exist). Semantically
-  chunked reviews order chapters in the model's proposed reading order,
-  not path order.
-- Expanded chapter: the narrative paragraph sits above the diff as rendered
-  markdown (a muted "not analyzed yet" placeholder until then). While the
-  LLM generates the draft on first expansion, a spinner + "analyzing…"
+  narrative placeholder ("unanalyzed" only when the chapter could not be
+  analysed: no LLM configured or the call failed; a served session is
+  analysed up front, spec §16.2). Chapters are ordered for reading — the
+  analysis arranges them so the review builds understanding (spec §16.7),
+  path order only as fallback.
+- Narrative paragraph above the diff as rendered
+  markdown (a muted "not analyzed yet" placeholder until then). While a
+  re-run regenerates the draft, a spinner + "analyzing…"
   replaces the view and the edit button is hidden. An ✎ edit button swaps
   the view for a textarea (save/cancel) prefilled with the current markdown
   text — minor edits are the common case, so editing starts from what's
@@ -159,12 +163,38 @@ read top to bottom; collapsing is an optimization, not the default).
   never take space below the line — that's for comments — so mark-dense
   diffs stay readable.
 - **Deep links**: hovering a diff line or comment exposes a copy-link
-  (local URL fragment). Opening one scrolls to and highlights the target;
-  links survive export/import and break on rebase like everything else
-  session-keyed.
+  (local URL fragment). Opening one opens the owning chapter, scrolls to
+  and highlights the target; links survive export/import and break on
+  rebase like everything else session-keyed.
 
 Empty diff (no chapters) → a "nothing to review for this comparison"
 message.
+
+### 3.3 Chapter rail
+
+Navigation for the one-chapter-at-a-time body (§3.2): a collapsible rail on
+the left, computed client-side from the session JSON the view already has
+(change counts come from the slices' hunk lines) — no new endpoints, no
+schema change.
+
+One row per chapter, in review order:
+
+- **Title** — the semantic chapter title when the chunk task produced one
+  (spec §8a), else the file list (first file, "+ n more" when long).
+- **One-line description** — the narrative's first line, or "unanalyzed".
+- **Change summary** — `N files · +x −y`: file count plus added/deleted
+  changed lines across the chapter's hunks.
+
+Clicking a row switches to that chapter; the active row is highlighted and
+nests the chapter's **file list** (in path order): file path, status glyph
+(A added / D deleted / M modified), and the per-file change summary `+x −y`
+from that slice's hunks. Clicking a file scrolls to that file's diff block
+(scroll-and-flash, as with deep links); each file keeps its existing link
+into the explorer (§2). Prev/next chapter controls move between chapters.
+
+Opening a session starts at the first chapter. A deep link targeting a
+chapter, a file/line, or a comment opens the owning chapter, then scrolls
+and flashes the target.
 
 ## 4. Deferred UX (not designed yet)
 

@@ -16,8 +16,9 @@ that survive rebases. Sessions persist as JSON in `.sky-watch/` and export
 as single files. No GitHub/GitLab API, no auth, no server deployment.
 
 **Non-goals (D§10, U§4):** auth/multi-user, markdown in comments, inline
-images, PR-provider integration, LSP highlighting, diff navigation
-shortcuts, dark mode, per-session identity override, session file locking
+images, PR-provider integration, LSP highlighting, shortcuts (in-diff hunk jumping — chapter-level navigation and the focus
+view do exist, §18.2), dark mode, per-session identity override,
+session file locking
 beyond a `lastWriteAt` conflict check, arbitrary-head comparisons in jj v1.
 
 ## 2. Stack decisions
@@ -68,7 +69,7 @@ sky-eye/
 │   ├── diff.ts               # git/jj CLI → unified diff → parsed hunks
 │   ├── chunker.ts            # hunks → chapters
 │   ├── classify.ts           # rule pass for attention marks
-│   ├── narrate.ts            # LLM narrative + shared classification refinement
+│   ├── narrate.ts            # LLM narrative + shared classification refinement + chapter ordering
 │   ├── remap.ts              # re-anchor comments onto a new diff
 │   ├── identity.ts           # author name/email from jj/git config
 │   ├── store.ts              # session files: load/save/list/merge-import, atomic writes
@@ -299,13 +300,15 @@ Algorithm (`src/semantic-chunk.ts`):
    chunker, appended at the end.
 5. **Chapter ids** keep the §8.5 formula; chapter **order** is the model's
    returned order (semantic reading order) instead of path order — pure-chunked
-   sessions keep path order.
+   sessions fall through to the ordering pass (§16.7) or, with no LLM
+   configured, path order.
 
 **Degradation (§16.1 rule extended):** no config, failed/malformed call, or
 oversized inventory → the pure chunker, unchanged. A session is never blocked
-on the LLM layer. Chapter creation requests are as slow as the chunk call
-when configured — accepted; the UI shows an "analyzing diff into chapters…"
-loader during creation (U§1.5).
+on the LLM layer. Chapter creation is as slow as the full analysis (chunk
+call + per-chapter narratives, §16.2) when configured — accepted; the UI
+shows an "analyzing…" loader with per-chapter progress during creation
+(U§1.5).
 
 **Determinism (resolved, task 019):** the grouping is model-derived, so
 §8.5's "stable under re-running on an identical diff" holds only for the pure
@@ -315,7 +318,9 @@ re-chunks, and the explicit re-chunk endpoint below is user-initiated.
 
 **Re-chunk endpoint:** `POST /api/sessions/:id/rechunk` rebuilds the grouping
 in place on the stored diff (semantic when configured, else pure), carries
-narratives over by chapter id and remaps comments (§13.3); any edited
+narratives over by chapter id, generates narratives for chapters without a
+carried-over one (§16.2), re-runs the ordering pass (§16.7), and remaps
+comments (§13.3); any edited
 narrative → the usual 409 `needsConfirm` gate (§10).
 
 ## 9. Data model & session store (`store.ts`, D§4)
@@ -365,7 +370,7 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   `FileSlice { file: string, status: "modified"|"added"|"deleted",
   hunks: Hunk[] }`, at most one slice per file, in path order).
   `title?: string` — one-line semantic description set by the chunk task
-  (§8a); absent from pure-chunked chapters; feeds the accordion header and
+  (§8a); absent from pure-chunked chapters; feeds the chapter rail row and
   the classifier/narrate context. **No legacy
   migration:** sessions persisted before this schema are treated as absent
   (`.sky-watch/` is derived cache; losing pre-multi-file sessions/comments
@@ -403,11 +408,11 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `GET /api/refs` | — | §5 |
 | `GET /api/tree?ref=&dir=[&recursive=1]` | — | `[{ name, type: "dir"|"file", path }]`; `dir` defaults to root; with `recursive=1` returns every *file* path at `ref`, flat (dirs derived by the client tree) — feeds the explorer's whole-repo `FileTree`, whose search needs the full path list; read from VCS object store at `ref`, repo-relative, contained (§11) |
 | `GET /api/file?ref=&path=&side=` | — | `{ content, binary }`; read from VCS object store at `ref` (`side` selects base/head ref of the open session or a plain ref, §11) |
-| `POST /api/sessions` | `{ base, head, baseLabel?, headLabel? }` | Resolves `base` and `head` to canonical stable IDs (§5/§9.1). If a session with `<base>..<head>` exists → **200 with the existing session** (no duplicate, U§1.5); else create: build diff, chunk, run rule classification, persist → `201` + `Session` |
+| `POST /api/sessions` | `{ base, head, baseLabel?, headLabel? }` | Resolves `base` and `head` to canonical stable IDs (§5/§9.1). If a session with `<base>..<head>` exists → **200 with the existing session** (no duplicate, U§1.5); else create: build diff, chunk, run the full analysis pipeline (rules marks → classifier → narrative/LLM marks → ordering, §16.2/§16.6/§16.7), persist → `201` + `Session` |
 | `POST /api/comments` | `{ sessionId, chapterId, file, side, line, text, priority? }` | `201` + `Comment`; server captures `anchor` from the session diff/VCS file (§12) |
 | `PATCH /api/sessions/:id` | `{ label?, reviewed?, narrative?: { chapterId, text }, lastWriteAt }` | updated `Session`; when `narrative` is present, saves the chapter's `narrative` and sets `narrativeEdited: true` |
 | `PATCH /api/comments/:id` | `{ sessionId, text?, resolved?, priority?, reanchor?: { chapterId, file, side, line }, lastWriteAt }` | updated `Comment` (bumps `updatedAt`); `resolved: true` stamps `resolvedAt`; `reanchor` captures a fresh server-side `anchor` and clears `orphaned` |
-| `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter; if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }`. First generation happens here too (lazy, D§6a) |
+| `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter (sessions are analysed at creation, §16.2; this is manual regeneration); if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }` |
 | `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative → same 409 `needsConfirm` gate as above |
 | `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives by chapter id, remaps comments (§13.3); any edited narrative → 409 `needsConfirm` gate as above |
 | `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-watch/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
@@ -474,7 +479,8 @@ comparison has changed and returns the stored `Session` with `stale: boolean`
 - **jj (key survives):** rebase preserves change ids → same session id,
   changed diff. `POST /api/sessions/:id/refresh` updates the session in place:
   rebuild diff + chapters, carry over matching unedited/edited narratives by
-  chapter id, run the remap pass (§13.3), update `diffDigest`.
+  chapter id, generate narratives for chapters without a carried-over one
+  (eager rule, §16.2), run the remap pass (§13.3), update `diffDigest`.
 - **git (key breaks):** amend/rebase rewrites commit ids → `headRef` resolves
   to `<newHeadId>`, producing a new session id `<base>..<newHeadId>`.
   `POST /api/sessions/:id/refresh` creates the successor session (rebuild +
@@ -567,17 +573,30 @@ buckets — §16.4). Missing file or
 missing key for a task → **task skipped, never blocks the session**
 (narrative = "unanalyzed", marks = rules only).
 
-### 16.2 Narrative firing & caching
+### 16.2 Narrative generation — eager, at build time
 
-- Lazily on first chapter expansion — `POST .../rerun { chapterId }` from
-  the frontend when `narrative` is empty. Never eager at session creation.
+- **Every chapter is analysed before the session is shown.** The generation
+  pass runs as the final step of every pipeline that (re)builds chapters —
+  session creation (§10), refresh/supersede (§13.2), re-chunk (§8a) — so a
+  served session is always fully analysed: narrative + LLM marks for every
+  chapter, in addition to the rule pass. `POST .../rerun { chapterId }`
+  remains for manual regeneration only.
+- **Never blocks on the LLM layer (§16.1 rule):** no config, or a
+  failed/malformed call for a chapter → that chapter stays "unanalyzed"
+  (rules marks only) and the pipeline still completes; the UI banner shows
+  per-chapter progress (ux §1.5). Creation is as slow as the full analysis
+  (chunk call + one narrate call per chapter, or the shared call, §16.3) —
+  accepted; the one-chapter-at-a-time view (ux §3.3) needs the analysis up
+  front to be readable.
 - Prompt input: the chapter's diff across **all** its file slices (§8) +
   ~10 lines of new-side context around each hunk + file paths + the list of
   other chapter titles (semantic titles from the chunk task when present,
   §8a; else the file list).
-- Output: short paragraph, stored in `Chapter.narrative`.
+- Output: short paragraph, stored in `Chapter.narrative`; cached in the
+  session file (generated once per chapter build).
 - `narrativeEdited` guard: re-run over an edited narrative requires
-  confirmation (409 flow, §10).
+  confirmation (409 flow, §10); the eager pass never overwrites anything —
+  it only fills chapters that have no narrative yet.
 
 ### 16.3 Shared call with classification
 
@@ -656,15 +675,37 @@ same ids, §8.5). Edited narratives are machine-overwritten only after
 Re-grouping the chapters themselves is the separate re-chunk endpoint
 (§8a); rerun-all still never re-chunks.
 
+### 16.7 Chapter ordering
+
+Chapter order is part of the analysis: it must aid reading, not follow the
+diff's alphabetical path order.
+
+- **Semantic chunking configured (§8a):** the chunk call already returns
+  chapters in review-reading order — no extra step.
+- **Pure-chunked session with an LLM configured (any of narrate/classify):**
+  one cheap ordering call over the chapter list — input is each chapter's
+  id, title (or file list), changed-line count and file statuses; output is
+  ONLY the chapter ids in review-reading order. Validation (pure): the
+  reply must be a permutation — unknown/duplicate ids dropped (first wins),
+  chapters the model missed keep path order, appended at the end. The
+  stored `chapters` array is physically reordered.
+- **No LLM configured:** path order (deterministic fallback).
+- Failed/malformed ordering call → path order (degrade, don't fail, §16.1).
+  Refresh/re-chunk re-run the pass for the new chapter set; narratives are
+  carried by chapter id, so ordering churn does not lose them.
+- The chapter rail (ux §3.3) and the "other chapter titles" prompt context
+  (§16.2) both follow the stored order.
+
 ## 17. Deep links (D§4, U§3.2)
 
 Pure frontend routing over session data; no endpoint:
 
 - `#<sessionId>/<chapterId>/<file>/<line>` — file path percent-encoded.
 - `#<sessionId>/<commentId>`
-- On load, resolve the fragment: fetch the session, scroll to + flash-
-  highlight the target. Valid across export/import; break on rebase like
-  everything session-keyed.
+- On load, resolve the fragment: fetch the session, open the focus view
+  (§18.2) on the owning chapter when the target is a chapter, file/line, or
+  comment, scroll to + flash-highlight the target. Valid across
+  export/import; break on rebase like everything session-keyed.
 
 ## 18. Frontend architecture (U§1.5–3.2)
 
@@ -681,7 +722,8 @@ Three views, hash-routed (`#` empty → first screen):
 2. **Session view:** header (editable label, aliases, open-comment count,
    reviewed toggle, actions: refresh / re-run / regenerate all (§16.6) /
    export / archive / delete, stale banner, orphan
-   banner) → chapters as accordion, **expanded by default**; narrative as a
+   banner) → **one chapter at a time**, navigated by the chapter rail
+   (below); narrative as a
    rendered markdown view above the diff (stored as markdown text verbatim,
    HTML-escaped before rendering — never raw HTML), editable only via an
    edit button that swaps in a textarea prefilled with the current markdown
@@ -704,6 +746,28 @@ Three views, hash-routed (`#` empty → first screen):
    badges on changed files via `setGitStatus`); read-only file view rendered
    by `@pierre/diffs` `File` / `CodeView`. Changed files in chapters link here.
 
+**Chapter rail (ux §3.3):** the session body shows **one chapter at a
+chapter at a time**; a collapsible rail left of the body is the navigation.
+
+- One row per chapter: title (`Chapter.title`, §9.3, else file-list
+  fallback), one-line narrative description (first line, or "unanalyzed"),
+  and a change summary `N files · +x −y` — the line counts computed
+  client-side by counting `add`/`del` `DiffLine`s across the chapter's
+  slices.
+- The active chapter's row is highlighted and nests its file list (path,
+  status glyph from `FileSlice.status`, per-slice `+x −y`); clicking a file
+  scrolls to that file's diff block (same scroll-and-flash as deep links,
+  §17); prev/next chapter controls move between chapters; opening a session
+  starts at the first chapter.
+- Deep links (§17) targeting a chapter, file/line, or comment open the
+  owning chapter, then scroll to the target.
+
+All of it is computed from the session JSON already fetched — no new
+endpoints, no schema change — and rendered as plain DOM (the pierre
+isolation rule is untouched; a chapter's 1–3 files don't warrant a
+`FileTree`). Only the active chapter's `FileDiff` instances are mounted,
+which also settles the eager-render concern below.
+
 **Pierre adapter (`pierre-adapter.js`):** maps sky-eye's server JSON
 (`Session`, `Hunk`, `DiffLine`, `LineMark`, `Comment`) onto the shapes
 `FileDiff`/`FileTree` expect, and translates selection/annotation events
@@ -714,6 +778,8 @@ Data flow: `api.js` wraps fetch (adds `X-Sky-Eye` on non-GET, propagates
 syncing. Diff rendering is the perf-sensitive path — chaptering caps each
 `FileDiff` at `maxLines` changed lines (§8, §22.5), which keeps renders small
 without lazy expansion; `VirtualizedFileDiff` is the standing upgrade path.
+(With the one-chapter-at-a-time body, ux §3.3, only the active chapter's
+`FileDiff`s are mounted in the first place.)
 
 ## 19. Syntax highlighting (D§3 row 1a, D§6b)
 
@@ -818,9 +884,12 @@ clone → edits/resolutions kept, comments re-anchor or orphan correctly,
 nothing lost.
 
 **M7 — LLM narratives + refined classification.** Deliver: `llm.ts`,
-`narrate.ts`, shared-call optimization, config file, lazy firing,
+`narrate.ts`, shared-call optimization, config file, eager analysis
+(chapters fully analysed at creation, §16.2) + ordering pass (§16.7),
 `narrativeEdited` guard, re-run confirm. *Accept:* no config → everything
-still works rules-only; with config → narratives on first expansion, cached,
+still works rules-only (chapters stay "unanalyzed", order falls back to
+path); with config → a new session opens fully analysed, chapters in
+reading order, narratives cached,
 editable, re-run asks before overwriting edits.
 
 ## 22. Open questions
@@ -851,8 +920,9 @@ milestone starts:
 5. **Large diffs.** RESOLVED at M4: chaptering *is* the virtualization —
    each chapter renders as one pierre `FileDiff` instance capped at `maxLines`
    (200) changed lines, so no single render is ever huge. No `FileDiff` →
-   `VirtualizedFileDiff` swap and no lazy expansion in v1; sessions with many
-   chapters render eagerly. Upgrade path if a real diff is observed crawling:
+   `VirtualizedFileDiff` swap and no lazy expansion in v1; with the
+   one-chapter-at-a-time body (ux §3.3) only the active chapter's diffs
+   are mounted anyway. Upgrade path if a real diff is observed crawling:
    swap the component in the adapter (same input shape), one line.
 6. **Base-side semantics for user-picked bases.** Default base uses
    merge-base semantics (`base...head`). When the user picks an arbitrary

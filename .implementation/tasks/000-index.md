@@ -23,3 +23,4 @@ below is the current plan.
 - `017` Archive/delete review — archive → `.sky-watch/archive/` (+ restore, `?archived=1` listing), delete permanent; header + first-screen UI — **pending**
 - `018` Regenerate all — one click re-runs rules + classifier + narrate for every chapter in place (`rerun-all`, spec §16.6) — **pending**
 - `019` Semantic chunking — `tasks.chunk` LLM task groups hunks into titled chapters (one call, §8a); pure chunker fallback; classifier sees chapter titles; `rechunk` endpoint + creation loader — **pending**
+- `020` Chapter navigation & eager analysis — one chapter at a time + chapter rail (title/description/change summary, nested file list), accordion removed; eager narrate pass ends every chapter-building pipeline (spec §16.2); reading-order chapter ordering pass (spec §16.7) — **pending**

@@ -63,7 +63,7 @@ files you can export and share.
 | 0 | Repo detection + ref discovery | `refs.ts` | `.jj` dir → jj mode (colocated: jj wins), else git mode; `GET /api/refs` returns root/kind, current head, default base, bookmarks/branches, recent commits; discovery gaps → 200 with empty lists, never errors |
 | 0a | Ignore-file upkeep | startup step | ensure `.sky-watch/` is ignored: append to `.gitignore` (created if missing; also honored by jj) and to `.dockerignore` (only if `.dockerignore` already exists) |
 | 0b | File explorer | `tree.ts` + frontend | GitHub/GitLab-style repo tree browsing and read-only file viewing (§6b) |
-| 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines, per-file tabs or accordion |
+| 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines; one chapter at a time with a chapter rail for navigation (frontend-only, ux.md §3.2–3.3) |
 | 1a | Syntax highlighting | `@pierre/highlights` (via `@pierre/diffs` rendering) | tree-sitter-grade WAT/WASM highlighter, 152 languages, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
 | 2 | Chapters of ~50–100 lines (max 200, configurable), spanning files when no split rule fires | `chunker.ts`, `semantic-chunk.ts` | split hunks at function boundaries within a file; keep related hunks in the same function together; a chapter holds one contiguous slice per file; config knob for max size. Opt-in semantic mode (spec §8a): a `chunk` LLM task groups hunks into titled chapters in one call; the pure chunker is the fallback at every point |
 | 3 | Attention highlighting (focus / glance / safe) | `classify.ts` | rule pass first (test changes, comments, lockfiles → safe; new auth/money/async/error paths → focus); LLM pass refines, opt-in |
@@ -241,14 +241,20 @@ history — those get orphaned, not moved), and base-commit-change remapping
 
 How a chapter summary is produced:
 
-- **Firing**: lazily on first chapter expansion, not eagerly at session
-  creation — chapters never expanded stay unanalyzed.
+- **Firing**: eagerly, as the final step of every chapter-building pipeline
+  (creation, refresh/supersede, re-chunk) — a session is fully analysed
+  before it is shown (spec §16.2). Chapters that could not be analysed
+  (no LLM configured, failed call) stay "unanalyzed"; the session never
+  blocks on the LLM layer.
 - **Prompt input** (one call per chapter): the chapter's unified diff text;
   ~10 lines of new-side context above/below each hunk; file paths; the list
   of other chapter titles (so the narrative can reference, not repeat) —
   semantic titles from the chunk task when present (spec §8a), else the
   file list.
 - **Output**: a short paragraph — what is happening here, not a judgment.
+- **Ordering**: chapters are arranged for reading as part of the analysis
+  (spec §16.7): the semantic chunker returns reading order; otherwise a
+  cheap ordering call arranges the chapter list; with no LLM, path order.
 - **Caching**: written to `Chapter.narrative` on first generation; survives
   reloads and exports. Re-run via `POST /api/sessions/:id/rerun`.
 - **Human editing (the rule, not the exception)**: the narrative renders as
@@ -388,9 +394,11 @@ sky-eye/
 Auth/multi-user (it's local), markdown rendering in comments, inline image
 attachments, PR-provider integration, LSP semantic highlighting
 (`@pierre/highlights` ships 152 languages of tree-sitter-grade coloring in
-v1, §6b), diff navigation shortcuts, dark mode, per-session identity
-override, session file locking (save-on-write with a `lastWriteAt` conflict
-check and a warning is enough). All addable later without rework.
+v1, §6b), diff navigation shortcuts (in-diff hunk jumping — chapter-level
+navigation and the one-chapter focus view are in, ux.md §3.3), dark mode,
+per-session identity override, session file locking (save-on-write with a
+`lastWriteAt` conflict check and a warning is enough). All addable later
+without rework.
 
 Also cut: building UI from the `@pierre/*` React entries — sky-eye uses only
 their vanilla JavaScript entries.
