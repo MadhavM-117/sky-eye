@@ -174,6 +174,45 @@ test("integration: refs, tree, file, sessions, security", async () => {
     const reloaded = await get(`/api/sessions/${session.id}`);
     assert.equal(reloaded.body.label, "the auth refactor");
 
+    // viewed files (task 021, spec §10): PATCH replaces the chapter's list,
+    // intersected with slice paths, duplicates removed; absent before first use
+    assert.ok(!("viewedFiles" in reloaded.body.chapters[0]), "no migration needed");
+    const slicePath = chapter.files[0].file;
+    const viewed = await mut("PATCH", `/api/sessions/${session.id}`, {
+      lastWriteAt: reloaded.body.lastWriteAt,
+      viewedFiles: { chapterId: chapter.id, files: [slicePath, slicePath, "../../etc"] },
+    });
+    assert.equal(viewed.status, 200);
+    assert.deepEqual(viewed.body.chapters[0].viewedFiles, [slicePath]);
+    // chapter-marking (all slice paths) stores the full list — the client
+    // derives "chapter viewed" from `every`
+    const allPaths = chapter.files.map((s: { file: string }) => s.file);
+    const marked = await mut("PATCH", `/api/sessions/${session.id}`, {
+      lastWriteAt: viewed.body.lastWriteAt,
+      viewedFiles: { chapterId: chapter.id, files: allPaths },
+    });
+    assert.deepEqual(marked.body.chapters[0].viewedFiles, allPaths);
+    const unviewed = await mut("PATCH", `/api/sessions/${session.id}`, {
+      lastWriteAt: marked.body.lastWriteAt,
+      viewedFiles: { chapterId: chapter.id, files: [] },
+    });
+    assert.deepEqual(unviewed.body.chapters[0].viewedFiles, []);
+    // unknown chapter → 404; stale lastWriteAt → 409
+    assert.equal(
+      (await mut("PATCH", `/api/sessions/${session.id}`, {
+        lastWriteAt: unviewed.body.lastWriteAt,
+        viewedFiles: { chapterId: "nope", files: [slicePath] },
+      })).status,
+      404,
+    );
+    assert.equal(
+      (await mut("PATCH", `/api/sessions/${session.id}`, {
+        lastWriteAt: 1,
+        viewedFiles: { chapterId: chapter.id, files: [slicePath] },
+      })).status,
+      409,
+    );
+
     // conflict: stale lastWriteAt → 409 with current session
     const conflict = await mut("PATCH", `/api/sessions/${session.id}`, {
       lastWriteAt: session.lastWriteAt,

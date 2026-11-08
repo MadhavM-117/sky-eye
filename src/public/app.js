@@ -29,6 +29,15 @@ let activeSid = null;
 let railCollapsed = false;
 let pendingTriage = null;
 
+// viewed state (task 021, spec §9.3): persisted per (chapter, file) slice via
+// PATCH viewedFiles; "chapter viewed" is derived (every slice listed). Collapse
+// is ephemeral UI state — explicit open/closed overrides, cleared on session
+// switch. At render time: override ?? viewed (viewed renders collapsed).
+let openOverrides = new Map(); // key `chapterId\0file` → true=open, false=manually closed
+const viewedKey = (chapterId, file) => `${chapterId}\u0000${file}`;
+const isViewed = (c, file) => (c.viewedFiles ?? []).includes(file);
+const chapterViewed = (c) => c.files.every((s) => isViewed(c, s.file));
+
 // hash forms (spec §17): "" | "#<sid>" | "#<sid>/<commentId>"
 //   | "#<sid>/<chapterId>/<encFile>/<line>" | "#<sid>/explorer/<encPath>§<side>"
 // (paths are percent-encoded, so no raw slashes inside the encoded part)
@@ -82,6 +91,7 @@ async function render() {
       activeSid = route.sid;
       activeChapterId = null;
       pendingTriage = null;
+      openOverrides.clear(); // fresh session → fresh collapse defaults
     }
     renderSession(session, route);
   } catch (e) {
@@ -324,12 +334,13 @@ function railHtml(session) {
         ? `<ul class="rail-files">${c.files
             .map((s) => {
               const [sa, sd] = sliceStats(s);
-              return `<li data-file="${esc(s.file)}" title="scroll to this file's diff"><span class="status ${s.status}">${s.status}</span><span class="rail-file-path">${esc(s.file)}</span><span class="stats"><span class="add">+${sa}</span> <span class="del">−${sd}</span></span></li>`;
+              const viewed = isViewed(c, s.file);
+              return `<li data-file="${esc(s.file)}" title="scroll to this file's diff"><span class="viewed">${viewed ? "✓" : ""}</span><span class="status ${s.status}">${s.status}</span><span class="rail-file-path">${esc(s.file)}</span><span class="stats"><span class="add">+${sa}</span> <span class="del">−${sd}</span></span></li>`;
             })
             .join("")}</ul>`
         : "";
       return `<div class="rail-row${active ? " active" : ""}" data-chapter="${c.id}">
-        <div class="rail-title">chapter ${i + 1}${c.title ? `: ${esc(c.title)}` : ""}</div>
+        <div class="rail-title">${chapterViewed(c) ? '<span class="viewed">✓</span> ' : ""}chapter ${i + 1}${c.title ? `: ${esc(c.title)}` : ""}</div>
         <div class="rail-desc">${esc(desc)}</div>
         <div class="rail-meta">${files} file${files === 1 ? "" : "s"} · <span class="add">+${add}</span> <span class="del">−${del}</span></div>
         ${fileList}
@@ -406,16 +417,25 @@ const triageItem = (c) => `
 
 function chapterHtml(session, c, index) {
   const [, add, del] = chapterStats(c);
-  // a chapter may span files (spec §9.3): one diff block per file slice
+  // a chapter may span files (spec §9.3): one diff block per file slice, each
+  // an accordion with a viewed checkbox (task 021) — viewed defaults to
+  // collapsed unless an explicit open override says otherwise
   const blocks = c.files
-    .map(
-      (s) => `
+    .map((s) => {
+      const key = viewedKey(c.id, s.file);
+      const open = openOverrides.has(key) ? openOverrides.get(key) : !isViewed(c, s.file);
+      return `
       <h3 class="file-head">
+        <button class="file-collapse" title="collapse / expand" data-chapter="${esc(c.id)}" data-file="${esc(s.file)}">${open ? "▾" : "▸"}</button>
         <a class="file-link" href="#${esc(session.id)}/explorer/${encodeURIComponent(s.file)}§head">${esc(s.file)}</a>
         <span class="status ${s.status}">${s.status}</span>
+        <label class="viewed-toggle"><input type="checkbox" class="file-viewed"
+          data-chapter="${esc(c.id)}" data-file="${esc(s.file)}"
+          ${isViewed(c, s.file) ? "checked" : ""}/> viewed</label>
       </h3>
-      <div class="diff-holder" data-chapter="${c.id}" data-file="${esc(s.file)}"></div>`,
-    )
+      <div class="diff-holder" data-chapter="${c.id}" data-file="${esc(s.file)}"
+        ${open ? "" : "hidden"}></div>`;
+    })
     .join("");
   return `
   <section class="chapter" data-chapter="${c.id}">
@@ -424,6 +444,8 @@ function chapterHtml(session, c, index) {
       <button class="chapter-next" title="next chapter" ${index === session.chapters.length - 1 ? "disabled" : ""}>▶</button>
       <span class="chapter-title">chapter ${index + 1}${c.title ? `: ${esc(c.title)}` : ""}</span>
       <span class="stats">${statsHtml(add, del)}</span>
+      <label class="viewed-toggle"><input type="checkbox" class="chapter-viewed"
+        data-chapter="${esc(c.id)}" ${chapterViewed(c) ? "checked" : ""}/> viewed</label>
       <button class="narr-edit" data-i="${index}" title="edit narrative">✎ edit</button>
       <button class="rerun" data-i="${index}" title="re-generate narrative + marks">↻</button>
     </h2>
@@ -518,6 +540,76 @@ function wireSession(session, route = null) {
       refreshAll(); // restore the row from server truth
     }
   };
+
+  // viewed state (task 021): one PATCH replaces the chapter's list, server
+  // intersects with slice paths; full re-render updates rail glyphs,
+  // checkboxes and chevrons together
+  const patchViewed = async (chapter, files) => {
+    try {
+      current = await mut("PATCH", `/api/sessions/${encodeURIComponent(current.id)}`, {
+        lastWriteAt: current.lastWriteAt,
+        viewedFiles: { chapterId: chapter.id, files },
+      });
+      renderSession(current);
+    } catch (e) {
+      handleMutError(e);
+    }
+  };
+
+  // un-hide a (possibly viewed → collapsed) block before scroll+flash: a
+  // hidden holder cannot be flashed. Marks an explicit open override so the
+  // unmark-viewed flow keeps the block open.
+  const forceOpen = (chapterId, file) => {
+    openOverrides.set(viewedKey(chapterId, file), true);
+    const h = [...document.querySelectorAll(".diff-holder")].find(
+      (x) => x.dataset.chapter === chapterId && x.dataset.file === file,
+    );
+    if (h) {
+      h.hidden = false;
+      const btn = h.previousElementSibling?.querySelector(".file-collapse");
+      if (btn) btn.textContent = "▾";
+    }
+    return h;
+  };
+
+  // per-file accordion (task 021): chevron toggles collapse — ephemeral,
+  // unmarking viewed does not auto-expand (the explicit override survives)
+  document.querySelectorAll(".file-collapse").forEach((btn) => {
+    btn.onclick = () => {
+      const key = viewedKey(btn.dataset.chapter, btn.dataset.file);
+      const holder = btn.closest(".file-head").nextElementSibling;
+      const nowOpen = !holder.hidden;
+      openOverrides.set(key, !nowOpen);
+      holder.hidden = nowOpen;
+      btn.textContent = nowOpen ? "▸" : "▾";
+    };
+  });
+
+  // viewed toggles: per file and per chapter (chapter = replace with all
+  // slice paths — the two rule directions hold by construction, §9.3)
+  document.querySelectorAll(".file-viewed").forEach((cb) => {
+    cb.onchange = () => {
+      const chapter = current.chapters.find((c) => c.id === cb.dataset.chapter);
+      if (!chapter) return;
+      const viewed = chapter.viewedFiles ?? [];
+      if (cb.checked) {
+        openOverrides.set(viewedKey(chapter.id, cb.dataset.file), false); // collapse immediately
+        patchViewed(chapter, [...new Set([...viewed, cb.dataset.file])]);
+      } else {
+        patchViewed(chapter, viewed.filter((f) => f !== cb.dataset.file));
+      }
+    };
+  });
+  document.querySelectorAll(".chapter-viewed").forEach((cb) => {
+    cb.onchange = () => {
+      const chapter = current.chapters.find((c) => c.id === cb.dataset.chapter);
+      if (!chapter) return;
+      if (cb.checked)
+        for (const s of chapter.files)
+          openOverrides.set(viewedKey(chapter.id, s.file), false); // collapse all
+      patchViewed(chapter, cb.checked ? chapter.files.map((s) => s.file) : []);
+    };
+  });
 
   // annotation row for one diff line: stored comments + optional composer
   const annotationRow = (annotation, chapter, file) => {
@@ -739,7 +831,9 @@ function wireSession(session, route = null) {
   // already resolved the owning chapter, so the target diff is mounted
   if (route?.target) {
     if (route.target === "line") {
-      // diffs are keyed chapter\u0000file (multi-file chapters, task 009)
+      // diffs are keyed chapter\u0000file (multi-file chapters, task 009);
+      // force the block open first — a viewed holder would be hidden
+      forceOpen(route.chapterId, route.file);
       const inst = diffs.get(`${route.chapterId}\u0000${route.file}`);
       if (inst)
         scrollFlash(() =>
@@ -747,6 +841,7 @@ function wireSession(session, route = null) {
         );
     } else if (current.comments.some((c) => c.id === route.target)) {
       const comment = current.comments.find((c) => c.id === route.target);
+      forceOpen(comment.chapterId, comment.file);
       scrollFlash(() =>
         queryComment(diffs.get(`${comment.chapterId}\u0000${comment.file}`), comment.id),
       );
@@ -782,6 +877,7 @@ function wireSession(session, route = null) {
           renderSession(current);
           return;
         }
+        forceOpen(chapter?.id, pendingTriage.file);
         scrollFlash(() => diffs.get(`${chapter?.id}\u0000${pendingTriage.file}`)?.el);
       };
     });
@@ -842,6 +938,7 @@ function wireSession(session, route = null) {
   document.querySelectorAll(".rail-files li").forEach((li) => {
     li.onclick = () => {
       const cid = li.closest(".rail-row")?.dataset.chapter;
+      forceOpen(cid, li.dataset.file); // explicit navigation reveals a viewed file
       scrollFlash(() =>
         [...document.querySelectorAll(".diff-holder")].find(
           (h) => h.dataset.chapter === cid && h.dataset.file === li.dataset.file,

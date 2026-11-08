@@ -28,4 +28,6 @@ below is the current plan.
   `(chapter, file)` slice), derived chapter-viewed, viewed toggles in body
   headers + rail ✓ glyphs, ephemeral collapse (viewed → collapsed by
   default, collapses on mark), carry by chapter id, not merged on import
-  (spec §9.3/§10/§18, ux §3.2–3.3) — **pending**
+  (spec §9.3/§10/§18, ux §3.2–3.3) — **done** (`carryNarratives` →
+  `carryChapterState`; ephemeral collapse via module-level open-overrides
+  map; `forceOpen` before every scroll+flash path)

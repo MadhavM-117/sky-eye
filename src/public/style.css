@@ -106,6 +106,13 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
   margin: 12px 0 4px; font-size: 12px;
 }
 .file-head .file-link { color: var(--accent); text-decoration: none; }
+/* viewed state + per-file accordion (task 021) */
+.file-collapse {
+  border: none; background: none; color: var(--muted);
+  width: 18px; flex-shrink: 0; padding: 0; cursor: pointer;
+}
+.file-head .viewed-toggle { margin-left: auto; }
+.viewed { color: var(--muted); margin-right: 4px; }
 .diff-holder { margin-top: 4px; }
 .status { font-size: 11px; border-radius: 999px; padding: 1px 8px; }
 .status.added { background: var(--add-bg); }
@@ -235,7 +242,7 @@ button.narr-edit:hover, button.rerun:hover { color: var(--fg); }
 .side-toggle button { border-radius: 0; border-right-width: 0; }
 .side-toggle button:first-child { border-radius: 6px 0 0 6px; }
 .side-toggle button:last-child { border-radius: 0 6px 6px 0; border-right-width: 1px; }
-.reviewed-toggle { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.reviewed-toggle, .viewed-toggle { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .explorer-link { color: var(--accent); }
 
 /* Comment rows + composer (M2). These live in the LIGHT DOM of pierre's

@@ -156,13 +156,19 @@ export interface RefreshResult {
   supersededBy?: string;
 }
 
-// narratives ride chapter ids (D§11 accepted: ids break when hunk ranges shift)
-export function carryNarratives(chapters: Chapter[], old: Map<string, Chapter>): Chapter[] {
+// narrative + viewed state ride chapter ids (D§11 accepted: ids break when
+// hunk ranges shift) — jj refresh, supersede and rechunk keep both for
+// chapters whose id is unchanged; rebuilt chapters start unviewed (§13.2, §8a)
+export function carryChapterState(chapters: Chapter[], old: Map<string, Chapter>): Chapter[] {
   for (const c of chapters) {
     const prev = old.get(c.id);
     if (prev) {
       c.narrative = prev.narrative;
       if (prev.narrativeEdited) c.narrativeEdited = true;
+      // defensive filter — an unchanged id means unchanged slices, but keeps
+      // the invariant "stored ⊆ slice paths"
+      if (prev.viewedFiles?.length)
+        c.viewedFiles = prev.viewedFiles.filter((f) => c.files.some((s) => s.file === f));
     }
   }
   return chapters;
@@ -192,7 +198,7 @@ export async function rechunkSession(
     throw new ApiError(409, "narrative edited", { error: "narrative edited", needsConfirm: true });
   const diffText = await buildDiff(root, kind, session.base, session.head);
   const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
-  session.chapters = carryNarratives(
+  session.chapters = carryChapterState(
     await chaptersFromDiff(root, diffText, { base: session.base, head: session.head }),
     oldChapters,
   );
@@ -210,7 +216,7 @@ export async function refreshSession(
     // key survives the rebase: same session file, new diff (spec §13.2)
     const diffText = await buildDiff(root, kind, session.base, session.head);
     const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
-    session.chapters = carryNarratives(
+    session.chapters = carryChapterState(
       await chaptersFromDiff(root, diffText, { base: session.base, head: session.head }),
       oldChapters,
     );
@@ -254,7 +260,7 @@ async function createSuccessor(
     comments: structuredClone(session.comments),
   };
   const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
-  successor.chapters = carryNarratives(
+  successor.chapters = carryChapterState(
     await chaptersFromDiff(root, diffText, { base: session.base, head: newHead }),
     oldChapters,
   );

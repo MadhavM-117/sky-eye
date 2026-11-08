@@ -249,6 +249,18 @@ export function patchSession(
     chapter.narrative = n.text ?? "";
     chapter.narrativeEdited = true;
   }
+  if (body.viewedFiles) {
+    const v = body.viewedFiles as { chapterId?: string; files?: unknown };
+    const chapter = session.chapters.find((c) => c.id === v.chapterId);
+    if (!chapter) throw new ApiError(404, `unknown chapter: ${v.chapterId}`);
+    // replace the list, intersected with the chapter's slice paths (spec §10):
+    // the client always sends the full list, so no add/remove ops needed
+    const slices = new Set(chapter.files.map((s) => s.file));
+    const files = Array.isArray(v.files)
+      ? v.files.filter((f): f is string => typeof f === "string" && slices.has(f))
+      : [];
+    chapter.viewedFiles = [...new Set(files)];
+  }
   return writeSession(root, session);
 }
 

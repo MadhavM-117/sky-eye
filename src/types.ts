@@ -136,6 +136,7 @@ export interface Chapter {
   narrativeEdited?: boolean;
   title?: string; // one-line semantic description from the chunk task (§8a)
   attention: LineMark[];
+  viewedFiles?: string[]; // slice paths marked viewed (spec §9.3); absent = nothing viewed
 }
 
 export interface Session {

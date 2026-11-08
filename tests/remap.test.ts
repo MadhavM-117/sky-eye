@@ -1,7 +1,7 @@
 // Remap pass fixtures (spec §13.3): pure logic, no CLIs (spec §20).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { remapComment } from "../src/remap.ts";
+import { carryChapterState, remapComment } from "../src/remap.ts";
 import type { Chapter, Comment, Hunk } from "../src/types.ts";
 
 const lines = (...texts: string[]) => texts;
@@ -127,4 +127,43 @@ test("file gone at the new head → orphaned", () => {
   const outcome = remapComment(c, null, [chapter("f.txt", [[1, 2]])]);
   assert.equal(outcome, "orphaned");
   assert.equal(c.orphaned, true);
+});
+
+// ---- carryChapterState (task 021, §13.2): narrative + viewedFiles ride the
+// chapter id; rebuilt chapters start unviewed
+
+const priorChapters = (chapters: Chapter[]) => new Map(chapters.map((c) => [c.id, c]));
+
+const viewedChapter = (id: string, viewedFiles?: string[]): Chapter => ({
+  id,
+  files: [
+    { file: "a.ts", status: "modified", hunks: [] },
+    { file: "b.ts", status: "modified", hunks: [] },
+  ],
+  narrative: "old narrative",
+  attention: [],
+  ...(viewedFiles ? { viewedFiles } : {}),
+});
+
+test("carry: same chapter id → narrative and viewedFiles carried", () => {
+  const rebuilt = [{ ...viewedChapter("ch-1"), narrative: "", files: viewedChapter("ch-1").files }];
+  const out = carryChapterState(rebuilt, priorChapters([viewedChapter("ch-1", ["a.ts"])]));
+  assert.equal(out[0].narrative, "old narrative");
+  assert.deepEqual(out[0].viewedFiles, ["a.ts"]);
+});
+
+test("carry: viewedFiles filtered to slice paths; new id → dropped", () => {
+  const old = [viewedChapter("ch-1", ["a.ts", "gone.ts"])];
+  const rebuilt = [{ ...viewedChapter("ch-1"), narrative: "", viewedFiles: undefined }];
+  const out = carryChapterState(rebuilt, priorChapters(old));
+  assert.deepEqual(out[0].viewedFiles, ["a.ts"]); // gone.ts no longer a slice
+
+  const moved = [{ ...viewedChapter("ch-2"), narrative: "", viewedFiles: undefined }];
+  const out2 = carryChapterState(moved, priorChapters(old));
+  assert.equal(out2[0].viewedFiles, undefined); // id moved → starts unviewed
+});
+
+test("carry: no prior viewedFiles → field stays absent", () => {
+  const out = carryChapterState([viewedChapter("ch-1")], priorChapters([viewedChapter("ch-1")]));
+  assert.equal("viewedFiles" in out[0], false);
 });
