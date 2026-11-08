@@ -248,7 +248,11 @@ export function createFileTree({ paths, changed = [], onOpen }) {
     paths,
     search: true,
     initialExpansion: "open",
-    gitStatus: changed.map((c) => ({ path: c.file, status: c.status })),
+    // chapters span files (spec §9.3): git-status entries come from the
+    // per-file slices, not the chapter
+    gitStatus: changed
+      .flatMap((c) => c.files.map((s) => ({ path: s.file, status: s.status })))
+      .filter((e) => e.path),
     onSelectionChange: (selected) => {
       const path = selected.at(-1);
       // dirs arrive selected too; only files open a view

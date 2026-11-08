@@ -232,7 +232,7 @@ function renderSession(session, route = null) {
       <span class="meta">${baseLabel} → ${headLabel}</span>
       <span class="meta" id="open-count">${openCount} open comments</span>
       <label class="reviewed-toggle"><input type="checkbox" id="reviewed" ${session.reviewed ? "checked" : ""}/> reviewed</label>
-      <a class="explorer-link" href="#${esc(session.id)}/explorer//head">files</a>
+      <a class="explorer-link" href="#${esc(session.id)}/explorer/§head">files</a>
       <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
       <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export">export</a>
       <button id="rerun-all" title="re-generate marks + narratives for every chapter">regenerate</button>
@@ -299,7 +299,7 @@ function chapterHtml(session, c, index) {
     .map(
       (s) => `
       <h3 class="file-head">
-        <a class="file-link" href="#${esc(session.id)}/explorer/${encodeURIComponent(s.file)}/head">${esc(s.file)}</a>
+        <a class="file-link" href="#${esc(session.id)}/explorer/${encodeURIComponent(s.file)}§head">${esc(s.file)}</a>
         <span class="status ${s.status}">${s.status}</span>
       </h3>
       <div class="diff-holder" data-chapter="${c.id}" data-file="${esc(s.file)}"></div>`,
