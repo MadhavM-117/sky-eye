@@ -309,13 +309,12 @@ function renderSession(session, route = null) {
         <a href="#">sky-eye</a>
         <span class="session-title" id="session-label" title="click to rename">${esc(title)}</span>
         <button class="title-edit" title="edit review title">✎</button>
-        <span class="badge">${badge(session)}</span>
-        <span class="aliases">${esc(session.aliases.join(" "))}</span>
         <span class="meta" id="open-count">${openCount} open comments</span>
       </div>
       <div class="h-row h-context">
-        <span class="repo-path" title="repository under review">${esc(session.meta.repo)}</span>
-        <span class="meta">${headLabel} → ${baseLabel}</span>
+        <span><span class="ctx-label">repo</span> <span class="repo-path" title="repository under review">${esc(session.meta.repo)}</span></span>
+        <span><span class="ctx-label">head</span> ${esc(headLabel)}</span>
+        <span><span class="ctx-label">base</span> ${esc(baseLabel)}</span>
       </div>
       <div class="h-row h-actions">
         <button id="mark-reviewed" class="${session.reviewed ? "marked" : ""}" title="${session.reviewed ? "this review is marked reviewed — click to unmark" : "mark this review as reviewed"}">${session.reviewed ? "✓ reviewed" : "mark reviewed"}</button>
@@ -410,8 +409,6 @@ const handleMutError = (e) => {
   alert(e?.error ?? "could not save");
 };
 
-const badge = (session) =>
-  session.meta.repo.split("/").slice(-1)[0] + " review";
 
 // Title: the stored label when set; default is the review order
 // "<current branch> → <base branch>" (feedback on task 023), raw id only

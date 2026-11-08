@@ -73,6 +73,13 @@ header.session-header { display: block; }
 }
 .session-header .h-row + .h-row { margin-top: 6px; }
 .session-header .h-context { color: var(--muted); font-size: 12px; }
+.ctx-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 2px;
+}
 .session-header .h-actions { margin-top: 8px; }
 #mark-reviewed.marked {
   background: var(--accent);

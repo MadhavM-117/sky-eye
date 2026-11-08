@@ -751,8 +751,9 @@ Three views, hash-routed (`#` empty → first screen):
    delete; restore moves a review back into the active list, delete
    (confirmed) removes it permanently.
 2. **Session view:** header on three lines (ux §3.1) — title row (editable
-   label, aliases, open-comment count), context row (full repo path, head
-   branch, base branch), actions row grouped into primary buttons
+   label, open-comment count), context row (full repo path, head branch,
+   base branch, each labelled `repo`/`head`/`base`), actions row grouped
+   into primary buttons
    (mark-reviewed **button** — not a checkbox, files, export) plus a
    collapsible "more" menu (regenerate all (§16.6), re-group, archive,
    delete); every action shows help text on hover; refresh lives in the

@@ -119,11 +119,13 @@ own row and nothing competes for attention:
 
 1. **Title row** — session label (click to edit — or the ✎ affordance next
    to it; the default title is the review order "<current branch> →
-   <base branch>", raw id only when branch names are unknown), repo-kind
-   badge, branch alias(es), open-comment count.
+   <base branch>", raw id only when branch names are unknown), open-comment
+   count. (No repo badge or aliases here — user feedback: their meaning
+   was unclear; the context row already says what is under review.)
 2. **Context row** — the full path to the repository being reviewed
    (`meta.repo`, display only), the current (head) branch, and the base
-   branch the review compares against — so it is always unambiguous what is
+   branch the review compares against, each with a small muted label
+   (`repo` / `head` / `base`) — so it is always unambiguous what is
    under review and against what.
 3. **Actions row** — grouped, primary first, so the row reads at a glance:
 
