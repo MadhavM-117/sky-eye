@@ -144,7 +144,8 @@ files.
   analysed: no LLM configured or the call failed; a served session is
   analysed up front, spec §16.2). Chapters are ordered for reading — the
   analysis arranges them so the review builds understanding (spec §16.7),
-  path order only as fallback.
+  path order only as fallback. The header also carries a **viewed toggle**:
+  marking the chapter viewed marks every file in it viewed (spec §9.3).
 - Narrative paragraph above the diff as rendered
   markdown (a muted "not analyzed yet" placeholder until then). While a
   re-run regenerates the draft, a spinner + "analyzing…"
@@ -158,6 +159,12 @@ files.
   diff (old left, new right), hunks with context lines. Code is syntax-highlighted by the pierre
   highlighter (152 languages, plain-text fallback) — file views and diff
   lines use the same highlighter and theme.
+  Each per-file block is an **accordion**: clicking the file heading
+  collapses/expands its diff. Each heading also carries a **viewed
+  checkbox**: marking a file viewed persists (spec §9.3) and collapses the
+  block immediately; a viewed file renders collapsed by default. Collapsing
+  alone is ephemeral (not persisted) — unmarking viewed does not auto-expand
+  a block; expanding it again is one click.
 - **Attention marks** render in a dedicated gutter column beside the line
   numbers, one glyph per marked line: ◆ focus / ▲ glance / ● safe (custom
   classifier names → the name's initial in the muted color, e.g. `S` for
@@ -193,6 +200,11 @@ nests the chapter's **file list** (in path order): file path, status glyph
 from that slice's hunks. Clicking a file scrolls to that file's diff block
 (scroll-and-flash, as with deep links); each file keeps its existing link
 into the explorer (§2). Prev/next chapter controls move between chapters.
+
+Chapter rows and nested file rows show a viewed glyph (✓) — the file's own
+viewed state, and the chapter's derived one (all files viewed → chapter
+viewed, spec §9.3). The rail's glyphs are read-only display; toggling lives
+in the body's headers (§3.2).
 
 Opening a session starts at the first chapter. A deep link targeting a
 chapter, a file/line, or a comment opens the owning chapter, then scrolls

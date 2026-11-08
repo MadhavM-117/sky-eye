@@ -142,6 +142,9 @@ Chapter {
   narrativeEdited?: boolean     // set when a human edited the narrative; a re-run
                                 // must confirm before overwriting it
   attention: LineMark[]         // per-line: "focus" | "glance" | "safe"; carries the slice's file
+  viewedFiles: string[]         // repo-relative paths of this chapter's file slices marked
+                                // viewed (subset of files[].file); a chapter counts as viewed
+                                // when every slice path is listed — derived, never stored
 }
 
 Comment {
@@ -191,7 +194,8 @@ GET  /api/file                      → file content at a ref, head or base side
                                       (repo-relative path)
 POST /api/sessions                  → create from {base, head} (or current branch vs default)
 POST /api/comments                  → add comment (sessionId in body; server captures anchor)
-PATCH /api/sessions/:id             → set label / reviewed flag / chapter narrative
+PATCH /api/sessions/:id             → set label / reviewed flag / chapter narrative /
+                                      viewed files (spec §9.3)
 PATCH /api/comments/:id             → edit / resolve / re-pin anchor / set priority (sessionId in body)
 POST /api/sessions/:id/rerun        → narrative/classification for one chapter;
                                       performs the first generation when none exists

@@ -318,7 +318,7 @@ re-chunks, and the explicit re-chunk endpoint below is user-initiated.
 
 **Re-chunk endpoint:** `POST /api/sessions/:id/rechunk` rebuilds the grouping
 in place on the stored diff (semantic when configured, else pure), carries
-narratives over by chapter id, generates narratives for chapters without a
+narratives and viewedFiles over by chapter id, generates narratives for chapters without a
 carried-over one (§16.2), re-runs the ordering pass (§16.7), and remaps
 comments (§13.3); any edited
 narrative → the usual 409 `needsConfirm` gate (§10).
@@ -375,6 +375,15 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   migration:** sessions persisted before this schema are treated as absent
   (`.sky-watch/` is derived cache; losing pre-multi-file sessions/comments
   is an accepted tradeoff).
+- `Chapter.viewedFiles: string[]` — repo-relative paths of the chapter's
+  file slices marked viewed, persisted as an exact list (always a subset of
+  the slice paths — the PATCH handler drops anything else, §10). A chapter
+  **counts as viewed when every slice path is listed** — derived wherever
+  displayed, never stored separately. Marking a chapter viewed lists all its
+  slice paths; marking a file viewed adds its path. Viewed state is per
+  `(chapter, file)` slice: a file whose hunks span two chapters is viewed
+  per chapter. The session-level `reviewed` flag stays a manual toggle —
+  no auto-derivation from chapters (revisit if wanted).
 - `Chapter.attention: LineMark[]` — `LineMark { file: string, side:
   "old"|"new", line: number, mark: "focus"|"glance"|"safe", markSource:
   "rules"|"llm"|"custom" }` (`file` required: a multi-file chapter's line
@@ -410,11 +419,11 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `GET /api/file?ref=&path=&side=` | — | `{ content, binary }`; read from VCS object store at `ref` (`side` selects base/head ref of the open session or a plain ref, §11) |
 | `POST /api/sessions` | `{ base, head, baseLabel?, headLabel? }` | Resolves `base` and `head` to canonical stable IDs (§5/§9.1). If a session with `<base>..<head>` exists → **200 with the existing session** (no duplicate, U§1.5); else create: build diff, chunk, run the full analysis pipeline (rules marks → classifier → narrative/LLM marks → ordering, §16.2/§16.6/§16.7), persist → `201` + `Session` |
 | `POST /api/comments` | `{ sessionId, chapterId, file, side, line, text, priority? }` | `201` + `Comment`; server captures `anchor` from the session diff/VCS file (§12) |
-| `PATCH /api/sessions/:id` | `{ label?, reviewed?, narrative?: { chapterId, text }, lastWriteAt }` | updated `Session`; when `narrative` is present, saves the chapter's `narrative` and sets `narrativeEdited: true` |
+| `PATCH /api/sessions/:id` | `{ label?, reviewed?, narrative?: { chapterId, text }, viewedFiles?: { chapterId, files: string[] }, lastWriteAt }` | updated `Session`; when `narrative` is present, saves the chapter's `narrative` and sets `narrativeEdited: true`; when `viewedFiles` is present, replaces that chapter's `viewedFiles` (unknown chapterId → 404; paths intersected with the chapter's slices — the client sends the full toggle list, computed per ux §3.2) |
 | `PATCH /api/comments/:id` | `{ sessionId, text?, resolved?, priority?, reanchor?: { chapterId, file, side, line }, lastWriteAt }` | updated `Comment` (bumps `updatedAt`); `resolved: true` stamps `resolvedAt`; `reanchor` captures a fresh server-side `anchor` and clears `orphaned` |
 | `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter (sessions are analysed at creation, §16.2; this is manual regeneration); if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }` |
 | `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative → same 409 `needsConfirm` gate as above |
-| `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives by chapter id, remaps comments (§13.3); any edited narrative → 409 `needsConfirm` gate as above |
+| `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives and viewedFiles by chapter id, remaps comments (§13.3); any edited narrative → 409 `needsConfirm` gate as above |
 | `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-watch/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
 | `POST /api/sessions/:id/unarchive` | — | moves an archived session back to the active list |
 | `DELETE /api/sessions/:id` | — | permanently deletes the session file, active or archived |
@@ -478,15 +487,21 @@ comparison has changed and returns the stored `Session` with `stale: boolean`
 
 - **jj (key survives):** rebase preserves change ids → same session id,
   changed diff. `POST /api/sessions/:id/refresh` updates the session in place:
-  rebuild diff + chapters, carry over matching unedited/edited narratives by
-  chapter id, generate narratives for chapters without a carried-over one
-  (eager rule, §16.2), run the remap pass (§13.3), update `diffDigest`.
+  rebuild diff + chapters, carry over matching unedited/edited narratives and
+  viewedFiles by chapter id, generate narratives for chapters without a
+  carried-over one (eager rule, §16.2), run the remap pass (§13.3), update
+  `diffDigest`.
 - **git (key breaks):** amend/rebase rewrites commit ids → `headRef` resolves
   to `<newHeadId>`, producing a new session id `<base>..<newHeadId>`.
   `POST /api/sessions/:id/refresh` creates the successor session (rebuild +
   remap carried over), sets `supersededBy: "<base>..<newHeadId>"` on the old
   session, and keeps the old file on disk as history. Opening a superseded
   session shows the banner and deep-links to the successor.
+
+**Viewed carry-over:** `viewedFiles` ride the same chapter-id matching as
+narratives in every rebuild flow (refresh and supersede here, re-chunk §8a):
+a rebuilt chapter with an unchanged id keeps its `viewedFiles`, any other
+starts unviewed (ids hash hunk ranges, §8.5).
 
 ### 13.3 Remap pass (re-anchoring)
 
@@ -532,8 +547,9 @@ during step 4. This is the D§11 risk, accepted.
     overwritten — chapters carry no timestamp, so there is nothing newer to
     compare; the `narrativeEdited` flag travels in the export and is
     respected). Chapters themselves are diff-derived and stay local.
-  - Session-level fields (label, reviewed) are not merged — only comments
-    and narratives are user state the spec merges (§14 scope).
+  - Session-level fields (label, reviewed) and per-chapter `viewedFiles` are
+    not merged — only comments and narratives are user state the spec merges
+    (§14 scope); viewed progress stays local, like `reviewed`.
   - If the imported session's `diffDigest` differs from the local diff digest
     for that session (other machine had a rebased clone), run the remap pass
     (§13.3) after merging and surface the stale banner rather than silently
@@ -729,9 +745,13 @@ Three views, hash-routed (`#` empty → first screen):
    HTML-escaped before rendering — never raw HTML), editable only via an
    edit button that swaps in a textarea prefilled with the current markdown
    (save → `narrativeEdited`); while the LLM analysis runs, a loading
-   indicator replaces the view and the edit button is hidden; per-
-   file headings; per chapter, a `@pierre/diffs` `FileDiff` (split style, one
-   file) renders the two-column diff with hunks + context. Comments attach
+   indicator replaces the view and the edit button is hidden; a chapter-
+   viewed toggle in the chapter header (marks all files viewed, §9.3);
+   per-file headings are accordion headers — clickable to collapse/expand
+   the block, each carrying the file's viewed checkbox (a viewed file
+   renders collapsed; collapse itself is ephemeral, ux §3.2); per chapter,
+   a `@pierre/diffs` `FileDiff` (split style, one file) renders the
+   two-column diff with hunks + context. Comments attach
    through FileDiff's **line-annotation framework** (annotation rows under
    the line) — no hand-built DOM overlays; gutter clicks use its selection
    API. Attention marks do **not** occupy annotation rows: they render as
@@ -756,7 +776,9 @@ chapter at a time**; a collapsible rail left of the body is the navigation.
   client-side by counting `add`/`del` `DiffLine`s across the chapter's
   slices.
 - The active chapter's row is highlighted and nests its file list (path,
-  status glyph from `FileSlice.status`, per-slice `+x −y`); clicking a file
+  viewed ✓ when the slice path is in `viewedFiles`, status glyph from
+  `FileSlice.status`, per-slice `+x −y`; the chapter row shows ✓ when all
+  its files are viewed); clicking a file
   scrolls to that file's diff block (same scroll-and-flash as deep links,
   §17); prev/next chapter controls move between chapters; opening a session
   starts at the first chapter.
