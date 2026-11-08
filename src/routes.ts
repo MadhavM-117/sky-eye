@@ -18,7 +18,7 @@ import {
   sessionId,
   unarchiveSession,
 } from "./store.ts";
-import { checkStale, refreshSession } from "./remap.ts";
+import { checkStale, refreshSession, rechunkSession } from "./remap.ts";
 import { rerunAll, rerunChapter } from "./narrate.ts";
 
 route("GET", "/api/refs", async ({ root, kind }) => getRefs(root, kind));
@@ -106,6 +106,16 @@ route("POST", "/api/sessions/:id/rerun-all", async ({ root, kind, params, body }
   const b = body as { confirm?: boolean };
   return rerunAll(root, kind, loadSession(root, sessionId(params.id)), b.confirm === true);
 });
+
+// re-chunk (spec §8a): re-run the chapter grouping in place on the stored
+// diff; 409 needsConfirm guards edited narratives (chapter ids may move)
+route("POST", "/api/sessions/:id/rechunk", async ({ root, kind, params, body }) =>
+  rechunkSession(
+    root,
+    kind,
+    loadSession(root, sessionId(params.id)),
+    (body as { confirm?: boolean }).confirm === true,
+  ));
 
 // archive/delete (task 017, spec §10): archive moves the file into
 // .sky-watch/archive/ (restore via unarchive), delete removes it permanently

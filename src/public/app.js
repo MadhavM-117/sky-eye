@@ -147,6 +147,15 @@ async function renderFirst() {
     const label =
       refs.branches.find((b) => b.id === base)?.name ??
       (refs.defaultBase?.id === base ? refs.defaultBase.label : undefined);
+    // semantic chunking (§8a) can make creation slow — spinner + banner
+    // instead of a dead button (same pattern as the rerun-all banner)
+    const btn = document.getElementById("create");
+    btn.disabled = true;
+    btn.textContent = "creating…";
+    const banner = document.createElement("div");
+    banner.className = "banner";
+    banner.innerHTML = '<span class="spinner"></span> analyzing diff into chapters…';
+    document.querySelector(".picker")?.insertAdjacentElement("afterend", banner);
     try {
       const s = await mut("POST", "/api/sessions", {
         base,
@@ -157,6 +166,10 @@ async function renderFirst() {
       location.hash = `#${s.id}`;
     } catch (e) {
       alert(e?.error ?? "could not create session");
+    } finally {
+      banner.remove();
+      btn.disabled = false;
+      btn.textContent = "Create review";
     }
   };
 
@@ -236,6 +249,7 @@ function renderSession(session, route = null) {
       <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
       <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export">export</a>
       <button id="rerun-all" title="re-generate marks + narratives for every chapter">regenerate</button>
+      <button id="rechunk" title="re-run the chapter grouping on the stored diff">re-group</button>
       <button id="archive" title="move out of the session list (restorable from the first screen)">archive</button>
       <button id="delete-review" title="delete permanently">delete</button>
     </header>
@@ -309,7 +323,7 @@ function chapterHtml(session, c, index) {
   <section class="chapter" data-chapter="${c.id}">
     <h2 class="chapter-head">
       <button class="collapse" data-i="${index}">▾</button>
-      <span class="chapter-title">chapter ${index + 1}</span>
+      <span class="chapter-title">chapter ${index + 1}${c.title ? `: ${esc(c.title)}` : ""}</span>
       <span class="stats">${del || !add ? `<span class="del">−${del}</span> ` : ``}<span class="add">+${add}</span></span>
       <button class="narr-edit" data-i="${index}" title="edit narrative">✎ edit</button>
       <button class="rerun" data-i="${index}" title="re-generate narrative + marks">↻</button>
@@ -602,6 +616,32 @@ function wireSession(session, route = null) {
       btn.textContent = "regenerate";
       for (const c of current.chapters) setNarrating(c.id, false);
       handleMutError(e);
+    }
+  });
+
+  // re-chunk (spec §8a): re-run the chapter grouping on the stored diff;
+  // server 409s with needsConfirm when any narrative is edited
+  document.getElementById("rechunk")?.addEventListener("click", async () => {
+    const edited = current.chapters.some((c) => c.narrativeEdited);
+    if (edited && !confirm("re-grouping rebuilds the chapters (chapter ids may move, comments get re-anchored) — re-group?")) return;
+    const btn = document.getElementById("rechunk");
+    btn.disabled = true;
+    btn.textContent = "re-grouping…";
+    const banner = document.createElement("div");
+    banner.className = "banner";
+    banner.textContent = "re-grouping chapters…";
+    document.querySelector("header")?.insertAdjacentElement("afterend", banner);
+    try {
+      current = await mut("POST", `/api/sessions/${encodeURIComponent(current.id)}/rechunk`, {
+        confirm: edited || undefined,
+      });
+      renderSession(current);
+    } catch (e) {
+      handleMutError(e);
+    } finally {
+      banner.remove();
+      btn.disabled = false;
+      btn.textContent = "re-group";
     }
   });
 

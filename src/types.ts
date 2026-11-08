@@ -76,13 +76,13 @@ export interface LlmTaskConfig {
 
 export interface LlmConfig {
   defaults?: LlmTaskConfig;
-  tasks?: { narrate?: LlmTaskConfig; classify?: LlmTaskConfig };
+  tasks?: { narrate?: LlmTaskConfig; classify?: LlmTaskConfig; chunk?: LlmTaskConfig };
 }
 
 // one LLM call; adapters return the assistant text (parsing is the caller's
 // job — narrate.ts knows the response shapes)
 export interface LlmRequest {
-  task: "narrate" | "classify";
+  task: "narrate" | "classify" | "chunk";
   model?: string;
   system: string;
   prompt: string;
@@ -134,6 +134,7 @@ export interface Chapter {
   files: FileSlice[];
   narrative: string;
   narrativeEdited?: boolean;
+  title?: string; // one-line semantic description from the chunk task (§8a)
   attention: LineMark[];
 }
 

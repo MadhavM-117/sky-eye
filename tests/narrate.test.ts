@@ -103,6 +103,12 @@ test("narrate prompt: file paths, other chapter titles, never the chapter itself
   assert.match(sharedSystemPrompt(), /JSON/);
 });
 
+test("chapterTitle prefers the semantic title (§8a), falls back to the file list", () => {
+  const c = session().chapters[1];
+  assert.equal(chapterTitle({ ...c, title: "auth fix" }), "auth fix");
+  assert.equal(chapterTitle(c), "src/c.ts");
+});
+
 test("parseLlmResponse: shared needs a narrative; marks validated per entry", () => {
   const good = parseLlmResponse(
     JSON.stringify({ narrative: "N", marks: [

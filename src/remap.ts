@@ -157,7 +157,7 @@ export interface RefreshResult {
 }
 
 // narratives ride chapter ids (D§11 accepted: ids break when hunk ranges shift)
-function carryNarratives(chapters: Chapter[], old: Map<string, Chapter>): Chapter[] {
+export function carryNarratives(chapters: Chapter[], old: Map<string, Chapter>): Chapter[] {
   for (const c of chapters) {
     const prev = old.get(c.id);
     if (prev) {
@@ -176,6 +176,29 @@ async function gitHeadNow(root: string, session: Session): Promise<string | null
   );
   id ??= await tryRun("git", ["rev-parse", "--verify", "HEAD"], root);
   return id?.trim() ?? null;
+}
+
+// re-chunk (§8a): rebuild the chapter grouping in place on the stored diff —
+// semantic grouping when tasks.chunk is configured, else the pure chunker.
+// Narratives ride chapter ids, comments go through the §13.3 remap pass;
+// chapter ids may move → the same 409 gate as rerun.
+export async function rechunkSession(
+  root: string,
+  kind: "git" | "jj",
+  session: Session,
+  confirm: boolean,
+): Promise<Session> {
+  if (session.chapters.some((c) => c.narrativeEdited) && !confirm)
+    throw new ApiError(409, "narrative edited", { error: "narrative edited", needsConfirm: true });
+  const diffText = await buildDiff(root, kind, session.base, session.head);
+  const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
+  session.chapters = carryNarratives(
+    await chaptersFromDiff(root, diffText, { base: session.base, head: session.head }),
+    oldChapters,
+  );
+  session.diffDigest = diffDigest(diffText);
+  await remapComments(root, kind, session);
+  return persistSession(root, session);
 }
 
 export async function refreshSession(

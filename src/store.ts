@@ -6,6 +6,8 @@ import path from "node:path";
 import { ApiError, validateRef } from "./cli.ts";
 import { buildDiff, diffDigest, parseUnifiedDiff } from "./diff.ts";
 import { chunk, loadConfig } from "./chunker.ts";
+import { semanticChunk } from "./semantic-chunk.ts";
+import { resolveTask } from "./llm.ts";
 import { withAttention } from "./classify.ts";
 import { applyClassifier, loadClassifyRules } from "./custom-classifier.ts";
 import { resolveStableId } from "./refs.ts";
@@ -166,7 +168,13 @@ export async function chaptersFromDiff(
   ids: { base: string; head: string },
 ): Promise<Chapter[]> {
   const rules = loadClassifyRules(root);
-  const chapters = chunk(parseUnifiedDiff(diffText), loadConfig(root)).map((c) =>
+  const fileDiffs = parseUnifiedDiff(diffText);
+  const config = loadConfig(root);
+  // semantic grouping when tasks.chunk resolves (§8a); any failure/absence
+  // falls back to the pure chunker — sessions never block on the LLM layer
+  const adapter = resolveTask(root, "chunk");
+  const semantic = adapter ? await semanticChunk(adapter, fileDiffs, config) : undefined;
+  const chapters = (semantic ?? chunk(fileDiffs, config)).map((c) =>
     withAttention(c, rules),
   );
   await applyClassifier(root, ids.base, ids.head, chapters);

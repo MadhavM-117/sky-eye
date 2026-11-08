@@ -74,6 +74,10 @@ Rendered top to bottom:
 2. **Compare picker** — "Review **[head]** against **[base dropdown]**" with
    the default base preselected, plus a "Create review" button. The
    dropdown groups: default base / bookmarks / branches / recent commits.
+   While the review is created (which can take a while when semantic
+   chunking is on — the diff is analyzed into chapters server-side, spec
+   §8a), the button is disabled and a banner shows
+   "analyzing diff into chapters…".
 3. **Existing sessions** — human label (if set, else the id), branch
    aliases, `updatedAt`, open-comment count, and a reviewed chip; click to
    open.
@@ -111,8 +115,11 @@ re-run (chapter analysis), regenerate all (one click re-runs marks +
 narratives for every chapter; asks once before overwriting any edited
 narrative; while it runs the button is disabled, a banner reports progress
 and each chapter shows the same "analyzing…" indicator as a per-chapter
-re-run), export, archive (review leaves the list, findable on the first
-screen), delete (confirm — permanent). Repo path + kind badge persist here
+re-run), re-group (re-runs the chapter grouping on the stored diff —
+semantic titles return via the chunk task, spec §8a; asks once before
+overwriting edited narratives since chapter ids may move), export, archive
+(review leaves the list, findable on the first screen), delete (confirm —
+permanent). Repo path + kind badge persist here
 too.
 
 **Stale session:** if the diff behind the session has changed (head moved,
@@ -127,8 +134,11 @@ key survives a rebase and the session updates in place.
 Chapters as an accordion, rendered **expanded** by default (a review is
 read top to bottom; collapsing is an optimization, not the default).
 
-- Collapsed chapter: title, one-line narrative placeholder ("unanalyzed"
-  until narratives exist).
+- Collapsed chapter: title — the semantic chapter title when the chunk task
+  produced one (spec §8a), else the chapter's file list — plus one-line
+  narrative placeholder ("unanalyzed" until narratives exist). Semantically
+  chunked reviews order chapters in the model's proposed reading order,
+  not path order.
 - Expanded chapter: the narrative paragraph sits above the diff as rendered
   markdown (a muted "not analyzed yet" placeholder until then). While the
   LLM generates the draft on first expansion, a spinner + "analyzing…"

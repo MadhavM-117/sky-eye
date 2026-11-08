@@ -102,6 +102,7 @@ export function classifierRequest(
     head,
     chapters: chapters.map((c) => ({
       id: c.id,
+      ...(c.title ? { title: c.title } : {}), // semantic title (§8a), additive
       files: c.files.map((f) => ({
         file: f.file,
         status: f.status,

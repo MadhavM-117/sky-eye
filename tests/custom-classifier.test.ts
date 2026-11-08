@@ -49,6 +49,13 @@ test("request carries only changed lines, with side + text", () => {
   ]);
 });
 
+test("request carries the semantic chapter title (§8a), omitted when absent", () => {
+  const titled: Chapter = { ...chapter, title: "auth fix" };
+  const req = JSON.parse(classifierRequest("/repo", "b1", "h1", [titled, chapter]));
+  assert.equal(req.chapters[0].title, "auth fix");
+  assert.equal("title" in req.chapters[1], false);
+});
+
 test("response parser: valid, sparse, unknown mark kept", () => {
   const expected = new Set(["src/a.ts\0old:2", "src/a.ts\0new:2"]);
   const raw = JSON.stringify({

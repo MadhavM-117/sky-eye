@@ -772,3 +772,48 @@ test("archive/delete: archive moves the file, unarchive restores, delete removes
     assert.equal((await mut("DELETE", `/api/sessions/${enc}`, {})).status, 404);
   });
 });
+
+test("rechunk: pure fallback keeps ids; chunk adapter regroups with titles; 409 gate (spec §8a)", async () => {
+  await withServer(async (_port, repo) => {
+    const session = await openSession();
+    const enc = encodeURIComponent(session.id);
+
+    // no chunk config → pure chunker, same diff → same ids
+    const rechunked = await mut("POST", `/api/sessions/${enc}/rechunk`, {});
+    assert.equal(rechunked.status, 200);
+    assert.deepEqual(
+      rechunked.body.chapters.map((c: { id: string }) => c.id),
+      session.chapters.map((c: { id: string }) => c.id),
+    );
+
+    // chunk adapter via the custom exec hook: groups h0, unknown ids dropped →
+    // leftovers land in trailing pure-chunked chapters
+    const dir = path.join(repo, ".sky-watch");
+    fs.mkdirSync(dir, { recursive: true });
+    const script = path.join(dir, "chunk.sh");
+    fs.writeFileSync(
+      script,
+      `#!/bin/sh\nnode -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{console.log(JSON.stringify({text:JSON.stringify({chapters:[{title:"one",hunks:["h0","h9"]}]})}))})'`,
+    );
+    fs.chmodSync(script, 0o755);
+    fs.writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({ tasks: { chunk: { command: script } } }),
+    );
+
+    const semantic = await mut("POST", `/api/sessions/${enc}/rechunk`, {});
+    assert.equal(semantic.status, 200);
+    assert.equal(semantic.body.chapters[0].title, "one");
+
+    // edited narrative → 409 needsConfirm until confirmed (§10 gate)
+    const chapterId = semantic.body.chapters[0].id;
+    await mut("PATCH", `/api/sessions/${enc}`, {
+      lastWriteAt: semantic.body.lastWriteAt,
+      narrative: { chapterId, text: "human edit" },
+    });
+    const guarded = await mut("POST", `/api/sessions/${enc}/rechunk`, {});
+    assert.equal(guarded.status, 409);
+    assert.equal(guarded.body.needsConfirm, true);
+    assert.equal((await mut("POST", `/api/sessions/${enc}/rechunk`, { confirm: true })).status, 200);
+  });
+});

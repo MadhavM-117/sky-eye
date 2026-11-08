@@ -84,6 +84,15 @@ test("decisionsRequestBody: one choice question per changed line, criteria attac
   assert.deepEqual(keyMap.get("q1"), { file: "src/auth.ts", side: "new", line: 2 });
 });
 
+test("decisionsRequestBody: semantic chapter title in state + instructions (§8a)", () => {
+  const titled = { ...chapter, title: "auth fix" } as Chapter;
+  const { body, keyMap } = decisionsRequestBody(request([titled]), decisionsCfg() as never);
+  const parsed = JSON.parse(body) as { state: string[]; questions: Record<any, any> };
+  assert.match(parsed.state[0], /## "auth fix"/);
+  assert.match(parsed.questions.q0.instructions, /Chapter context: "auth fix"/);
+  assert.ok(keyMap.size >= 1);
+});
+
 test("decisionsRequestBody: default criteria/instructions when not configured", () => {
   const { body } = decisionsRequestBody(request(), decisionsCfg()  as never);
   const q = (JSON.parse(body) as { questions: Record<any, any> }).questions["q0"];

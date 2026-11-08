@@ -42,7 +42,7 @@ interface ProtocolLine {
   text: string;
 }
 interface ProtocolRequest {
-  chapters: { id: string; files: { file: string; status: string; hunks: { lines: ProtocolLine[] }[] }[] }[];
+  chapters: { id: string; title?: string; files: { file: string; status: string; hunks: { lines: ProtocolLine[] }[] }[] }[];
 }
 
 // classifier protocol request → decision-API body + the q<N>→coordinate map
@@ -58,7 +58,12 @@ export function decisionsRequestBody(
   const keyMap = new Map<string, { file: string; side: "old" | "new"; line: number }>();
   let n = 0;
   for (const chapter of parsed.chapters) {
+    // semantic chapter title (§8a) rides along as context — in the state
+    // block and in each of the chapter's question instructions
+    const context = chapter.title ? `Chapter context: "${chapter.title}"
+` : "";
     const parts: string[] = [];
+    if (chapter.title) parts.push(`## "${chapter.title}"`);
     for (const f of chapter.files) {
       parts.push(`${f.file} (${f.status})`);
       for (const hunk of f.hunks)
@@ -68,7 +73,7 @@ export function decisionsRequestBody(
           parts.push(`${l.type === "add" ? "+" : "-"} ${l.text}`);
           questions[key] = {
             type: "choice",
-            instructions: `${instructions}\nLine ${f.file} (${where}): "${l.text}"`,
+            instructions: `${context}${instructions}\nLine ${f.file} (${where}): "${l.text}"`,
             criteria,
           };
           keyMap.set(key, { file: f.file, side: l.side as "old" | "new", line: l.line });

@@ -94,8 +94,9 @@ export function classifySystemPrompt(): string {
   );
 }
 
+// semantic title from the chunk task when present (§8a), else the file list
 export const chapterTitle = (chapter: Chapter) =>
-  `${chapter.files.map((f) => f.file).join(", ")}`;
+  chapter.title ?? `${chapter.files.map((f) => f.file).join(", ")}`;
 
 // current rules/llm marks listed in the prompt so the model can correct
 const currentMarksText = (chapter: Chapter) =>

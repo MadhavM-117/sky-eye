@@ -22,3 +22,4 @@ below is the current plan.
 - `016` Logs folder — all logs in `.sky-watch/logs/`, overwritten per run, only the most recent kept — **pending**
 - `017` Archive/delete review — archive → `.sky-watch/archive/` (+ restore, `?archived=1` listing), delete permanent; header + first-screen UI — **pending**
 - `018` Regenerate all — one click re-runs rules + classifier + narrate for every chapter in place (`rerun-all`, spec §16.6) — **pending**
+- `019` Semantic chunking — `tasks.chunk` LLM task groups hunks into titled chapters (one call, §8a); pure chunker fallback; classifier sees chapter titles; `rechunk` endpoint + creation loader — **pending**

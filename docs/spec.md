@@ -267,6 +267,57 @@ Algorithm:
 `"review": { "targetLines": 75, "maxLines": 200 }` (see §16.3; Open
 Question on whether a UI for this is ever needed — v1: file only).
 
+## 8a. Semantic chunking (`tasks.chunk`, task 019)
+
+When the LLM config resolves a `chunk` task adapter (same model as
+narrate/classify, §16.1), the rebuild pipeline (`chaptersFromDiff`, shared by
+creation, refresh and supersede) groups hunks **semantically**: one blocking
+LLM call — grouping, titles and the analysis are one step (user decision).
+
+Algorithm (`src/semantic-chunk.ts`):
+
+1. **Inventory (pure):** all hunks get ids `h0…hN-1` in path-then-position
+   order; each entry carries file, status, funcname (§8.2 header), ranges,
+   changed-line count, and the hunk's changed-line text **capped at 40 lines**
+   (elision marker beyond). An inventory over a size budget (> 2000 hunks or
+   > 400 KB of text) skips the semantic pass entirely — chunking a monster
+   diff semantically is worse than the heuristic.
+2. **One LLM call** — reply is ONLY JSON:
+   `{ "chapters": [{ "title": "...", "hunks": ["h0", "h3"] }] }`. The model
+   is told to make each chapter one semantic change, order chapters in
+   review-reading order, and keep ~50–100 changed lines per chapter, never
+   over `maxLines`.
+3. **Validation (pure):** a hunk id must exist and is used at most once
+   (duplicates: first group wins); unknown ids and empty titles are dropped;
+   titles are trimmed and capped at 80 chars.
+4. **Guardrails:** chapters are built as FileSlices per file in path order
+   (§8 shape unchanged); a group over `maxLines` changed lines is re-split by
+   the pure chunker (§8) on its own hunks — never split an individual hunk,
+   every chapter stays ≤ `maxLines` (the renderer's virtualization guarantee,
+   §22.5); the title applies only to the first re-split chapter. Hunks the
+   model missed (or a fully failed grouping) fall through to the pure
+   chunker, appended at the end.
+5. **Chapter ids** keep the §8.5 formula; chapter **order** is the model's
+   returned order (semantic reading order) instead of path order — pure-chunked
+   sessions keep path order.
+
+**Degradation (§16.1 rule extended):** no config, failed/malformed call, or
+oversized inventory → the pure chunker, unchanged. A session is never blocked
+on the LLM layer. Chapter creation requests are as slow as the chunk call
+when configured — accepted; the UI shows an "analyzing diff into chapters…"
+loader during creation (U§1.5).
+
+**Determinism (resolved, task 019):** the grouping is model-derived, so
+§8.5's "stable under re-running on an identical diff" holds only for the pure
+chunker. Accepted: nothing re-chunks an unchanged diff within a session's
+life — refresh/supersede own diff changes, rerun-all (§16.6) explicitly never
+re-chunks, and the explicit re-chunk endpoint below is user-initiated.
+
+**Re-chunk endpoint:** `POST /api/sessions/:id/rechunk` rebuilds the grouping
+in place on the stored diff (semantic when configured, else pure), carries
+narratives over by chapter id and remaps comments (§13.3); any edited
+narrative → the usual 409 `needsConfirm` gate (§10).
+
 ## 9. Data model & session store (`store.ts`, D§4)
 
 ### 9.1 Session identity (binding, restated for implementers)
@@ -312,7 +363,10 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   comments) is repo-relative.
 - `Chapter`: may span multiple files (`files: FileSlice[]`, each
   `FileSlice { file: string, status: "modified"|"added"|"deleted",
-  hunks: Hunk[] }`, at most one slice per file, in path order). **No legacy
+  hunks: Hunk[] }`, at most one slice per file, in path order).
+  `title?: string` — one-line semantic description set by the chunk task
+  (§8a); absent from pure-chunked chapters; feeds the accordion header and
+  the classifier/narrate context. **No legacy
   migration:** sessions persisted before this schema are treated as absent
   (`.sky-watch/` is derived cache; losing pre-multi-file sessions/comments
   is an accepted tradeoff).
@@ -355,6 +409,7 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `PATCH /api/comments/:id` | `{ sessionId, text?, resolved?, priority?, reanchor?: { chapterId, file, side, line }, lastWriteAt }` | updated `Comment` (bumps `updatedAt`); `resolved: true` stamps `resolvedAt`; `reanchor` captures a fresh server-side `anchor` and clears `orphaned` |
 | `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter; if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }`. First generation happens here too (lazy, D§6a) |
 | `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative → same 409 `needsConfirm` gate as above |
+| `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives by chapter id, remaps comments (§13.3); any edited narrative → 409 `needsConfirm` gate as above |
 | `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-watch/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
 | `POST /api/sessions/:id/unarchive` | — | moves an archived session back to the active list |
 | `DELETE /api/sessions/:id` | — | permanently deletes the session file, active or archived |
@@ -499,7 +554,7 @@ during step 4. This is the D§11 risk, accepted.
 
 `.sky-watch/config.json` (inside the ignored folder — keys never land in
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
-`narrate` / `classify` (`apiKey`, `model`, `baseUrl`, `provider`, plus
+`narrate` / `classify` / `chunk` (`apiKey`, `model`, `baseUrl`, `provider`, plus
 `command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
 (classifier pass: `command` (exec hook), or built-in backends — `builtin:
 "openrouter"` + `model` (e.g. typesafe/jev-1.14) via OpenRouter — plus
@@ -518,7 +573,8 @@ missing key for a task → **task skipped, never blocks the session**
   the frontend when `narrative` is empty. Never eager at session creation.
 - Prompt input: the chapter's diff across **all** its file slices (§8) +
   ~10 lines of new-side context around each hunk + file paths + the list of
-  other chapter titles.
+  other chapter titles (semantic titles from the chunk task when present,
+  §8a; else the file list).
 - Output: short paragraph, stored in `Chapter.narrative`.
 - `narrativeEdited` guard: re-run over an edited narrative requires
   confirmation (409 flow, §10).
@@ -560,9 +616,10 @@ are configured.
 
 **Exec hook** — when `classifier.command` is set, sky-eye spawns it.
 Request/response JSON on stdin/stdout (`protocol: 1`): chapters with their
-changed lines in; sparse `marks` out, overriding rules marks per
-`(file, side, line)` with `markSource: "custom"`; unmarked lines keep rules
-marks. Invalid entries are dropped.
+changed lines — plus the chapter's semantic `title` when present (§8a,
+additive field; hooks may ignore it) — in; sparse `marks` out, overriding
+rules marks per `(file, side, line)` with `markSource: "custom"`; unmarked
+lines keep rules marks. Invalid entries are dropped.
 
 **Built-in backends** — when `classifier.builtin: "openrouter"` (+
 `model`) is set, sky-eye itself classifies via **OpenRouter's
@@ -571,7 +628,9 @@ decision-model API** (`POST
 it works — out of the box: typesafe's **jev** (`typesafe/jev-1.14`),
 one request per rebuild, one `choice` question per changed line, criteria =
 the configured `criteria` map (mark names = keys, descriptions = values;
-default = the rules buckets), diff rendered as `state`. API key: `apiKey` →
+default = the rules buckets), diff rendered as `state` — with the chapter's
+semantic title (§8a) prefixed to its `state` block and appended to its
+questions' instructions when present. API key: `apiKey` →
 `OPENROUTER_API_KEY` env → llm `defaults` (one OpenRouter key serves both
 tasks). Responses answer at `answers[<qKey>].choice`.
 
@@ -594,6 +653,8 @@ re-generated: refresh (§13) is the tool when the underlying diff changed;
 rerun-all is for marks/narratives only. Chapter ids don't move (same diff →
 same ids, §8.5). Edited narratives are machine-overwritten only after
 `{ confirm: true }` — the UI asks once for all chapters, not per chapter.
+Re-grouping the chapters themselves is the separate re-chunk endpoint
+(§8a); rerun-all still never re-chunks.
 
 ## 17. Deep links (D§4, U§3.2)
 
@@ -676,6 +737,11 @@ Priority order — "chunker + remap first, that's where the bugs live":
 1. **`chunker.test.ts`** — pure fixtures: size limits, keep-together,
    function-boundary splits, unbreakable oversized hunk, deleted files
    (no `/dev/null` ID collision), empty diff.
+1a. **`semantic-chunk.test.ts`** — pure fixtures (§8a): inventory build
+   (ids, funcname, 40-line cap), response validation (duplicate hunk id
+   first-wins, unknown ids, title capping, malformed JSON throws),
+   `buildChapters` (slice shape, maxLines re-split, leftovers via pure
+   chunker, id formula unchanged), prompt-size circuit breaker.
 2. **`remap.test.ts`** — anchor scoring: exact match near old line, multiple
    candidates, match outside new diff hunks → orphan, no match → orphan,
    old-side anchors orphan immediately.

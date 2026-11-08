@@ -33,6 +33,18 @@ test("loadLlmConfig: missing/invalid file → undefined", () => {
   assert.equal(loadLlmConfig(root2), undefined);
 });
 
+test("resolveTask: chunk task resolves like the others (task 019)", () => {
+  const cfg: LlmConfig = {
+    defaults: { apiKey: "k", model: "gpt-x" },
+    tasks: { chunk: { model: "gpt-chunk" } },
+  };
+  const chunk = resolveTask(withConfig(cfg), "chunk");
+  assert.ok(chunk);
+  assert.match(chunk!.id, /gpt-chunk$/);
+  // not configured → skipped
+  assert.equal(resolveTask(withConfig({ defaults: { apiKey: "k" } }), "chunk"), undefined);
+});
+
 // resolveTask is exercised through the adapters it builds — identity strings
 // prove which provider/config won
 test("resolveTask: defaults merge with task override; missing → undefined", () => {

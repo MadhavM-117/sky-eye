@@ -22,7 +22,7 @@ export function loadLlmConfig(root: string): LlmConfig | undefined {
 }
 
 // defaults ← task override merge; `command` wins over provider
-function resolveTaskConfig(config: LlmConfig | undefined, task: "narrate" | "classify"): LlmTaskConfig | undefined {
+function resolveTaskConfig(config: LlmConfig | undefined, task: "narrate" | "classify" | "chunk"): LlmTaskConfig | undefined {
   const merged: LlmTaskConfig = { ...config?.defaults, ...config?.tasks?.[task] };
   if (merged.command?.trim()) return { ...merged, command: merged.command.trim() };
   if (merged.model?.trim()) return { ...merged, model: merged.model.trim() };
@@ -122,7 +122,7 @@ function shRun(command: string, cwd: string, timeoutMs: number, input: string): 
 
 // The one entry point narrate.ts uses: resolve a task's adapter or undefined
 // (task skipped). Throws only on programmer error (unknown task name).
-export function resolveTask(root: string, task: "narrate" | "classify"): LlmAdapter | undefined {
+export function resolveTask(root: string, task: "narrate" | "classify" | "chunk"): LlmAdapter | undefined {
   const cfg = resolveTaskConfig(loadLlmConfig(root), task);
   if (!cfg) return undefined;
   if (cfg.command) return customAdapter(cfg, root);

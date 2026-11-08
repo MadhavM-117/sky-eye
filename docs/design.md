@@ -65,7 +65,7 @@ files you can export and share.
 | 0b | File explorer | `tree.ts` + frontend | GitHub/GitLab-style repo tree browsing and read-only file viewing (§6b) |
 | 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines, per-file tabs or accordion |
 | 1a | Syntax highlighting | `@pierre/highlights` (via `@pierre/diffs` rendering) | tree-sitter-grade WAT/WASM highlighter, 152 languages, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
-| 2 | Chapters of ~50–100 lines (max 200, configurable), spanning files when no split rule fires | `chunker.ts` | split hunks at function boundaries within a file; keep related hunks in the same function together; a chapter holds one contiguous slice per file; config knob for max size |
+| 2 | Chapters of ~50–100 lines (max 200, configurable), spanning files when no split rule fires | `chunker.ts`, `semantic-chunk.ts` | split hunks at function boundaries within a file; keep related hunks in the same function together; a chapter holds one contiguous slice per file; config knob for max size. Opt-in semantic mode (spec §8a): a `chunk` LLM task groups hunks into titled chapters in one call; the pure chunker is the fallback at every point |
 | 3 | Attention highlighting (focus / glance / safe) | `classify.ts` | rule pass first (test changes, comments, lockfiles → safe; new auth/money/async/error paths → focus); LLM pass refines, opt-in |
 | 4 | Comments on lines | comments API + frontend gutter click | GitHub-style: click line → inline composer, reply, resolve |
 | 5 | Local persistence + single-file export | per-session JSON files; export = copy of the file, import = load + merge by session ID | re-verify guards against importing a review of a different commit |
@@ -136,6 +136,8 @@ Chapter {
   id: string                    // stable hash of all file slices + first/last hunk ranges
   files: FileSlice[]            // one contiguous slice per file, in path order
                                 // FileSlice { file, status, hunks } — a chapter may span files
+  title?: string                // one-line semantic description from the chunk task
+                                // (spec §8a); absent from pure-chunked chapters
   narrative: string             // what's happening here (LLM, "unanalyzed", or human-written)
   narrativeEdited?: boolean     // set when a human edited the narrative; a re-run
                                 // must confirm before overwriting it
@@ -243,7 +245,9 @@ How a chapter summary is produced:
   creation — chapters never expanded stay unanalyzed.
 - **Prompt input** (one call per chapter): the chapter's unified diff text;
   ~10 lines of new-side context above/below each hunk; file paths; the list
-  of other chapter titles (so the narrative can reference, not repeat).
+  of other chapter titles (so the narrative can reference, not repeat) —
+  semantic titles from the chunk task when present (spec §8a), else the
+  file list.
 - **Output**: a short paragraph — what is happening here, not a judgment.
 - **Caching**: written to `Chapter.narrative` on first generation; survives
   reloads and exports. Re-run via `POST /api/sessions/:id/rerun`.
@@ -257,7 +261,7 @@ How a chapter summary is produced:
   editor opens over "unanalyzed" too.
 - **Per-task model/key config**: a config file at `.sky-watch/config.json`
   (inside the ignored state folder, so keys never land in git/jj/docker).
-  Tasks (v1: `narrate`, `classify`; the classifier pass (spec §16.5 — exec
+  Tasks (v1: `narrate`, `classify`, `chunk`; the classifier pass (spec §16.5 — exec
   hook or built-in backends — OpenRouter's decision-model API
   (src/decisions.ts), model e.g. typesafe/jev-1.14) joins the same
   scheme) fall
@@ -351,6 +355,7 @@ sky-eye/
 │   ├── tree.ts         # file explorer: tree listing + file content at a ref
 │   ├── diff.ts         # git/jj → hunks
 │   ├── chunker.ts      # hunks → chapters (the interesting part)
+│   ├── semantic-chunk.ts # LLM semantic grouping (optional, spec §8a)
 │   ├── classify.ts     # rules for attention marks
 │   ├── narrate.ts      # LLM chapter narratives (optional)
 │   ├── remap.ts        # rebase survival: re-anchor comments
