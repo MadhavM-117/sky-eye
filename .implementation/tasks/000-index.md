@@ -31,5 +31,5 @@ below is the current plan.
   (spec §9.3/§10/§18, ux §3.2–3.3) — **done** (`carryNarratives` →
   `carryChapterState`; ephemeral collapse via module-level open-overrides
   map; `forceOpen` before every scroll+flash path)
-- `022` Session header redesign — three-line layout (title / context: repo path + head/base branch / actions), mark-reviewed as a button, primary actions + "more" overflow menu, hover help text on every action (ux §3.1, spec §18, design §9.8) — **pending**
+- `022` Session header redesign — three-line layout (title / context: repo path + head/base branch / actions), mark-reviewed as a button, primary actions + "more" overflow menu, hover help text on every action (ux §3.1, spec §18, design §9.8) — **done** (class-scoped `header.session-header` so the first screen's single-row header is untouched; native `<details>` overflow menu, existing handler ids preserved)
 - `023` File-bar accordion + full-file mode — **done** (`fullFileHunks` padding in the adapter from `/api/file`; whole-bar toggle, de-linked path; unchanged-line comments pinned by remap §13.3.5, visible only in full-file mode; deep links force full-file before scroll+flash)
