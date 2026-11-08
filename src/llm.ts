@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import Anthropic from "@anthropic-ai/sdk";
 import type { LlmAdapter, LlmConfig, LlmRequest, LlmTaskConfig } from "./types.ts";
 
 export const DEFAULT_TIMEOUT_MS = 120_000;
@@ -85,6 +86,36 @@ export function anthropicAdapter(cfg: LlmTaskConfig, fetchImpl = fetch): LlmAdap
   };
 }
 
+// @anthropic-ai/sdk adapter: API key or OAuth/subscription authToken
+// (claude subscriptions use the same OAuth token Claude Code does). The
+// SDK supplies retries (2× on 429/529) and request formation; a missing
+// credential chain skips the task rather than throwing (§16.1).
+export function claudeSdkAdapter(cfg: LlmTaskConfig, fetchImpl = fetch): LlmAdapter {
+  const apiKey = cfg.apiKey?.trim() || process.env.ANTHROPIC_API_KEY;
+  const authToken =
+    cfg.authToken?.trim() || process.env.ANTHROPIC_AUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  const client = new Anthropic({
+    ...(apiKey ? { apiKey } : {}),
+    ...(authToken ? { authToken } : {}),
+    ...(cfg.baseUrl ? { baseURL: cfg.baseUrl } : {}),
+    timeout: cfg.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxRetries: 2,
+    fetch: fetchImpl as unknown as typeof globalThis.fetch,
+  });
+  return {
+    id: `claude:${cfg.baseUrl ?? "https://api.anthropic.com"}:${cfg.model}`,
+    call: async (req: LlmRequest) => {
+      const msg = await client.messages.create({
+        model: req.model ?? cfg.model!,
+        max_tokens: 1024, // parity with the anthropic fetch adapter; shortcut: not configurable, add maxTokens key if narratives truncate
+        system: req.system,
+        messages: [{ role: "user", content: req.prompt }],
+      });
+      return msg.content.find((b) => b.type === "text")?.text ?? "";
+    },
+  };
+}
+
 // custom adapter: same exec spirit as the classifier hook (§16.5) — a
 // single string command via /bin/sh, request JSON on stdin, `{ text }` out
 export class CustomAdapterError extends Error {}
@@ -122,10 +153,19 @@ function shRun(command: string, cwd: string, timeoutMs: number, input: string): 
 
 // The one entry point narrate.ts uses: resolve a task's adapter or undefined
 // (task skipped). Throws only on programmer error (unknown task name).
-export function resolveTask(root: string, task: "narrate" | "classify" | "chunk"): LlmAdapter | undefined {
+export function resolveTask(root: string, task: "narrate" | "classify" | "chunk", fetchImpl = fetch): LlmAdapter | undefined {
   const cfg = resolveTaskConfig(loadLlmConfig(root), task);
   if (!cfg) return undefined;
   if (cfg.command) return customAdapter(cfg, root);
   if (cfg.provider === "anthropic") return anthropicAdapter(cfg);
+  if (cfg.provider === "claude") {
+    const apiKey = cfg.apiKey?.trim() || process.env.ANTHROPIC_API_KEY;
+    const authToken = cfg.authToken?.trim() || process.env.ANTHROPIC_AUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    if (!apiKey && !authToken) {
+      console.error("sky-eye: claude provider configured but no apiKey/authToken — task skipped");
+      return undefined;
+    }
+    return claudeSdkAdapter(cfg, fetchImpl);
+  }
   return openaiAdapter(cfg);
 }

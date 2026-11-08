@@ -32,4 +32,10 @@ below is the current plan.
   `carryChapterState`; ephemeral collapse via module-level open-overrides
   map; `forceOpen` before every scroll+flash path)
 - `022` Session header redesign — three-line layout (title / context: repo path + head/base branch / actions), mark-reviewed as a button, primary actions + "more" overflow menu, hover help text on every action (ux §3.1, spec §18, design §9.8) — **done** (class-scoped `header.session-header` so the first screen's single-row header is untouched; native `<details>` overflow menu, existing handler ids preserved)
+- `024` Claude SDK LLM provider — `provider: "claude"` via
+  `@anthropic-ai/sdk`; apiKey + subscription OAuth authToken chains
+  (spec §2 dependency-policy amendment, §16.1, §22.2) — **done**
+  (`provider: "claude"` via `@anthropic-ai/sdk` 1.6.0; credential chain
+  apiKey → env, authToken → envs for Pro/Max subscriptions; no-credential
+  → task skipped; SDK sends Bearer auth, not x-api-key)
 - `023` File-bar accordion + full-file mode — **done** (`fullFileHunks` padding in the adapter from `/api/file`; whole-bar toggle, de-linked path; unchanged-line comments pinned by remap §13.3.5, visible only in full-file mode; deep links force full-file before scroll+flash)

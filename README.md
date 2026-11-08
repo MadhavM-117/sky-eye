@@ -83,8 +83,9 @@ Per task (`defaults` merged with `tasks.<name>`):
 
 | Option      | Meaning                                                          | Default                     |
 | ----------- | ---------------------------------------------------------------- | --------------------------- |
-| `provider`  | `openai` (OpenAI-compatible) or `anthropic` (native Messages API) | `openai`                    |
+| `provider`  | `openai` (OpenAI-compatible), `anthropic` (native Messages API), or `claude` (official `@anthropic-ai/sdk` — supports Claude subscription OAuth tokens and automatic retries) | `openai`                    |
 | `apiKey`    | API key sent with the request                                    | —                           |
+| `authToken` | `claude` only: OAuth token for Claude subscriptions (Pro/Max); falls back to env `ANTHROPIC_AUTH_TOKEN` / `CLAUDE_CODE_OAUTH_TOKEN` | —                           |
 | `model`     | Model name. **A task with no `model` is skipped.**               | —                           |
 | `baseUrl`   | API base URL                                                     | `https://api.openai.com/v1` (openai) / `https://api.anthropic.com` (anthropic) |
 | `command`   | Custom exec adapter instead of an API: shell command, request JSON on stdin, expects `{ "text": "..." }` on stdout. Wins over `provider`. | —      |
@@ -129,6 +130,27 @@ Uses Anthropic's native `/v1/messages` endpoint:
 ```
 
 No `baseUrl` needed for the public API; set it only for a proxy/gateway.
+
+### Claude (SDK — subscriptions supported)
+
+The `claude` provider uses the official `@anthropic-ai/sdk` client, so a
+Claude **subscription** (Pro/Max) works too, not just API keys:
+
+```jsonc
+{
+  "defaults": {
+    "provider": "claude",
+    "model": "claude-sonnet-4-5"
+  }
+}
+```
+
+Credentials resolve in order: config `apiKey` → env `ANTHROPIC_API_KEY`,
+then config `authToken` → env `ANTHROPIC_AUTH_TOKEN` →
+`CLAUDE_CODE_OAUTH_TOKEN` (the same OAuth token Claude Code uses for
+subscription auth). With no credential the task is skipped, like any other
+unconfigured task. API-key auth and subscription auth are mutually
+exclusive; a key wins if both are set.
 
 ### Built-in classifier via OpenRouter's decision API
 

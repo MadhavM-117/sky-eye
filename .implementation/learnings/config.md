@@ -14,3 +14,9 @@
   places — `LlmConfig.tasks`, `LlmRequest.task`, `llm.resolveTask` and
   `llm.resolveTaskConfig`. Widen all four. Task behavior itself belongs in a
   task module (`narrate.ts`, `semantic-chunk.ts`); `llm.ts` stays adapters-only.
+- Adding an LLM provider (task 024, `claude`): widen `LlmTaskConfig.provider`
+  + add an adapter factory taking an optional injected `fetch` (the SDK
+  accepts one too) + a branch in `resolveTask`. Adapter `id` prefix must
+  match the provider name so the shared-call check (§16.3) reads clearly.
+  Gotcha: `@anthropic-ai/sdk` ≥1.6 sends API keys as `authorization: Bearer`,
+  not `x-api-key`; auth headers only appear in the injected fetch's `init`.

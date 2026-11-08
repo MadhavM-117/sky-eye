@@ -32,13 +32,16 @@ The docs left several "or" choices (D§2). Resolved here:
 | Frontend framework | **No app framework.** Thin vanilla app on top of the `@pierre/*` UI packages (`@pierre/diffs`, `@pierre/trees`; `@pierre/highlights` + `@pierre/theme` transitively) | Pierre's diff renderer already does what sky-eye would otherwise hand-build three times over: two-column rendering, line annotations (comments, attention marks), selection, virtualization. Its file tree has search + git-status badges. Writing our own diff/comment rendering layer is the slowest path to M2. |
 | Frontend bundling | **`esbuild`** (devDependency) bundles `public/` JS → `public/dist/` | The `@pierre/*` dist files are ESM with bare imports (`shiki`, `diff`, `lru_map`, …) that a static file server cannot resolve; a bundle is the robust answer, an import map the brittle one. The *server* keeps its no-build rule (Node native type stripping). |
 | Diff source | **Shell out to the `git` / `jj` CLI**, parse unified diff output | No libgit2/nodegit. The tool already assumes both CLIs exist. |
-| LLM access | **OpenAI-compatible `POST {baseUrl}/chat/completions` via `fetch`** | Matches the config schema's `baseUrl`/`model`/`apiKey` (D§6a); covers OpenAI, Anthropic-compatible gateways, ollama, llama.cpp. No SDK dependency. |
+| LLM access | **OpenAI-compatible `POST {baseUrl}/chat/completions` via `fetch`** | Matches the config schema's `baseUrl`/`model`/`apiKey` (D§6a); covers OpenAI, Anthropic-compatible gateways, ollama, llama.cpp. Plus the `@anthropic-ai/sdk` client (`provider: "claude"`) for Claude API-key and subscription/OAuth auth (task 024). |
 | Syntax highlighting | **`@pierre/highlights`** — WAT/WASM tree-sitter-grade highlighter, 152 languages, Zed-compatible themes | Applied by `@pierre/diffs` to rendered diff hunks automatically; same engine colors explorer file views. 152 languages for free replaces a hand-rolled 5-language tokenizer. |
 | Test runner | **`node:test`** (built-in) | No test-specific dependencies; the tests are pure-function fixtures (D§8). |
 | Distribution | npm package with a `bin` entry (`sky-eye`), run inside any repo; server resolves the repo from `process.cwd()` | D/U§1.1: "user runs `sky-eye` inside a repository". |
 
 Dependency policy (v1 revision): **server runtime dependencies stay zero**
-(`node:http`, `node:test`, CLIs, `fetch` — all unchanged). **Frontend runtime
+(`node:http`, `node:test`, CLIs, `fetch` — all unchanged) **except
+`@anthropic-ai/sdk`** (task 024), added deliberately so the `claude`
+provider can offer subscription/OAuth auth and retries that raw `fetch`
+can't. **Frontend runtime
 dependencies allowed**, pinned exact: `@pierre/diffs`, `@pierre/trees`, and
 their transitive set (`shiki`, `diff`, `lru_map`, `hast-util-to-html`,
 `@pierre/highlights`, `@pierre/theme`/`@pierre/theming`). Dev dependencies:
@@ -588,6 +591,10 @@ during step 4. This is the D§11 risk, accepted.
 `.sky-watch/config.json` (inside the ignored folder — keys never land in
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
 `narrate` / `classify` / `chunk` (`apiKey`, `model`, `baseUrl`, `provider`, plus
+`authToken` for the claude provider (§22.2: `@anthropic-ai/sdk` —
+credentials resolve `apiKey` → `ANTHROPIC_API_KEY`, then `authToken` →
+`ANTHROPIC_AUTH_TOKEN` → `CLAUDE_CODE_OAUTH_TOKEN` for Claude
+subscriptions; no credential → task skipped) and
 `command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
 (classifier pass: `command` (exec hook), or built-in backends — `builtin:
 "openrouter"` + `model` (e.g. typesafe/jev-1.14) via OpenRouter — plus
@@ -975,7 +982,10 @@ milestone starts:
    native Anthropic `/v1/messages` (selected via `provider: "anthropic"`),
    and a custom exec adapter (`command` in the task config: JSON
    `{ protocol, task, model, system, prompt }` on stdin, `{ "text" }` on
-   stdout — same spirit as the classifier hook §16.5). Requests are
+   stdout — same spirit as the classifier hook §16.5). Amended (task 024):
+   a fourth — the official `@anthropic-ai/sdk` client (selected via
+   `provider: "claude"`), the only one supporting Claude subscription
+   (Pro/Max) OAuth tokens. Requests are
    **blocking** in v1 (one paragraph, seconds); streaming is deferred to a
    future task — revisit if slow models annoy.
 3. **Chapter-id instability on every diff change.** Any diff change (not
