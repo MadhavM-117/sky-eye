@@ -312,9 +312,8 @@ function renderSession(session, route = null) {
         <span class="meta" id="open-count">${openCount} open comments</span>
       </div>
       <div class="h-row h-context">
-        <span><span class="ctx-label">repo</span> <span class="repo-path" title="repository under review">${esc(session.meta.repo)}</span></span>
-        <span><span class="ctx-label">head</span> ${esc(headLabel)}</span>
-        <span><span class="ctx-label">base</span> ${esc(baseLabel)}</span>
+        <span class="repo-path" title="repository under review"><span class="ctx-label">repo</span>${esc(session.meta.repo)}</span>
+        <span class="meta">${esc(headLabel)} → ${esc(baseLabel)}</span>
       </div>
       <div class="h-row h-actions">
         <button id="mark-reviewed" class="${session.reviewed ? "marked" : ""}" title="${session.reviewed ? "this review is marked reviewed — click to unmark" : "mark this review as reviewed"}">${session.reviewed ? "✓ reviewed" : "mark reviewed"}</button>

@@ -74,11 +74,19 @@ header.session-header { display: block; }
 .session-header .h-row + .h-row { margin-top: 6px; }
 .session-header .h-context { color: var(--muted); font-size: 12px; }
 .ctx-label {
-  color: var(--muted);
-  font-size: 11px;
+  display: inline-block;
+  background: var(--header-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  margin-right: 6px;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-right: 2px;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  line-height: 16px;
+  vertical-align: 1px;
 }
 .session-header .h-actions { margin-top: 8px; }
 #mark-reviewed.marked {
