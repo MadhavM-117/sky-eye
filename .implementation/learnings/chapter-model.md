@@ -13,3 +13,9 @@
   added files. Unchanged-line comments (§13.3.5) are pinned to the FIRST
   chapter carrying the file; they ride `annotationsFor` only when the block
   is in full-file mode (filtered by `lineInSlice` otherwise).
+- Full-file toggle-off (task 023 feedback): the rebuild path is shared by
+  toggle-off AND re-renders — any "rebuild the holder" helper must branch on
+  the mode BEFORE fetching (off-by-one here made diff view re-pad forever).
+- Default session title (feedback, ux §3.1): review order
+  `<current branch> → <base branch>`, stored at creation when both labels
+  exist; display falls back via `displayTitle()` for label-less sessions.

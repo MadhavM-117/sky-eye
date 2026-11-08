@@ -401,6 +401,8 @@ test("refresh: git amend supersedes, comments carried and re-pinned (spec §13.2
   await withServer(async (port, repo) => {
     portOf = port;
     const session = await openSession();
+    // default title is the review order "<current branch> → <base branch>"
+    assert.equal(session.label, `${session.headRef} → ${session.baseRef}`);
     assert.equal(
       (await get(`/api/sessions/${session.id}`)).body.stale,
       false,

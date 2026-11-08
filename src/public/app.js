@@ -293,19 +293,21 @@ function renderSession(session, route = null) {
   const headLabel = session.headRef ?? short(session.head);
   const baseLabel = session.baseRef ?? short(session.base);
   const openCount = session.comments.filter((c) => !c.resolved).length;
+  const title = displayTitle(session);
 
   // the body renders one chapter (ux §3.3); the rail is the navigation
   const chaptersHtml = active
     ? chapterHtml(session, active, session.chapters.indexOf(active))
     : `<p class="empty">nothing to review for this comparison</p>`;
 
-  shell(session.label ?? session.id, `
+  shell(title, `
     <header>
       <a href="#">sky-eye</a>
       <span class="badge">${badge(session)}</span>
-      <span class="session-title" id="session-label" title="click to rename">${esc(session.label ?? session.id)}</span>
+      <span class="session-title" id="session-label" title="click to rename">${esc(title)}</span>
+      <button class="title-edit" title="edit review title">✎</button>
       <span class="aliases">${esc(session.aliases.join(" "))}</span>
-      <span class="meta">${baseLabel} → ${headLabel}</span>
+      <span class="meta">${headLabel} → ${baseLabel}</span>
       <span class="meta" id="open-count">${openCount} open comments</span>
       <label class="reviewed-toggle"><input type="checkbox" id="reviewed" ${session.reviewed ? "checked" : ""}/> reviewed</label>
       <a class="explorer-link" href="#${esc(session.id)}/explorer/§head">files</a>
@@ -395,6 +397,15 @@ const handleMutError = (e) => {
 
 const badge = (session) =>
   session.meta.repo.split("/").slice(-1)[0] + " review";
+
+// Title: the stored label when set; default is the review order
+// "<current branch> → <base branch>" (feedback on task 023), raw id only
+// when branch names are unknown
+const displayTitle = (s) => {
+  if (s.label) return s.label;
+  if (s.headRef && s.baseRef) return `${s.headRef} → ${s.baseRef}`;
+  return s.id;
+};
 
 // stale / superseded / orphan-triage banners (spec §13, U§3.1)
 function bannersHtml(session) {
@@ -749,7 +760,9 @@ function wireSession(session, route = null) {
     }
     if (!holder) return;
     const slice = chapter.files.find((s) => s.file === file);
-    if (!slice || slice.status === "deleted") return buildDiff(holder, chapter, file);
+    // only full-file mode fetches + pads; diff view mounts the stored hunks
+    if (!isFullFile(chapter.id, file) || !slice || slice.status === "deleted")
+      return buildDiff(holder, chapter, file);
     get(`/api/file?ref=${encodeURIComponent(current.head)}&path=${encodeURIComponent(file)}`)
       .then(({ content }) =>
         buildDiff(
@@ -1127,10 +1140,13 @@ function wireSession(session, route = null) {
     };
   });
 
-  const labelEl = document.getElementById("session-label");
-  labelEl.onclick = () => {
+  // title editing (click the title or the ✎ affordance); the input starts
+  // from the displayed title so editing the default feels natural
+  const startTitleEdit = () => {
+    const labelEl = document.getElementById("session-label");
+    if (!labelEl) return; // already editing
     const input = document.createElement("input");
-    input.value = current.label ?? "";
+    input.value = current.label ?? displayTitle(current);
     labelEl.replaceWith(input);
     input.focus();
     const done = async () => {
@@ -1153,6 +1169,8 @@ function wireSession(session, route = null) {
       }
     };
   };
+  document.getElementById("session-label")?.addEventListener("click", startTitleEdit);
+  document.querySelector(".title-edit")?.addEventListener("click", startTitleEdit);
 
   document.getElementById("reviewed").onchange = async (ev) => {
     try {

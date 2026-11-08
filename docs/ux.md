@@ -117,8 +117,10 @@ Read-only in v1: no editing, no blame, no history view.
 The header is laid out on three lines so each kind of information gets its
 own row and nothing competes for attention:
 
-1. **Title row** — session label (click to edit; falls back to the raw id
-   when unset), repo-kind badge, branch alias(es), open-comment count.
+1. **Title row** — session label (click to edit — or the ✎ affordance next
+   to it; the default title is the review order "<current branch> →
+   <base branch>", raw id only when branch names are unknown), repo-kind
+   badge, branch alias(es), open-comment count.
 2. **Context row** — the full path to the repository being reviewed
    (`meta.repo`, display only), the current (head) branch, and the base
    branch the review compares against — so it is always unambiguous what is

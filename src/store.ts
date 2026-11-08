@@ -216,6 +216,9 @@ export async function createSession(
     updatedAt: now,
     lastWriteAt: now,
     meta: { repo: root },
+    // default title: review order "<current branch> → <base branch>" — stored
+    // so exports/listings carry it; label-less sessions fall back at display
+    label: baseLabel && headLabel ? `${headLabel} → ${baseLabel}` : undefined,
     reviewed: false,
     chapters: await chaptersFromDiff(root, diffText, { base: baseId, head: headId }),
     comments: [],
