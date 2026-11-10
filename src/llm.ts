@@ -10,7 +10,7 @@ import type { LlmAdapter, LlmConfig, LlmRequest, LlmTaskConfig } from "./types.t
 
 export const DEFAULT_TIMEOUT_MS = 120_000;
 
-const configPath = (root: string) => path.join(root, ".sky-watch", "config.json");
+const configPath = (root: string) => path.join(root, ".sky-eye", "config.json");
 
 export function loadLlmConfig(root: string): LlmConfig | undefined {
   try {

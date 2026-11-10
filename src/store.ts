@@ -28,7 +28,7 @@ export function sessionId(id: string): string {
   return id;
 }
 
-const dir = (root: string) => path.join(root, ".sky-watch");
+const dir = (root: string) => path.join(root, ".sky-eye");
 const archiveDir = (root: string) => path.join(dir(root), "archive");
 const fileFor = (root: string, id: string) => path.join(dir(root), `${id}.json`);
 const archiveFileFor = (root: string, id: string) =>
@@ -151,7 +151,7 @@ export function listSessions(root: string, archived = false): SessionListEntry[]
       .filter((f) => f.endsWith(".json"))
       .map((f) => path.join(listDir, f));
   } catch {
-    return []; // no .sky-watch (or archive/) yet
+    return []; // no .sky-eye (or archive/) yet
   }
   return files
     .map((f) => headerOf(root, f))

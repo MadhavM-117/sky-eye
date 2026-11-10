@@ -36,12 +36,12 @@ sky-eye                # detects the repo, starts the server, opens the browser
 ```
 
 Not inside a repo → sky-eye exits with an error and no browser is opened.
-All state lives in `.sky-watch/` inside the reviewed repo (session JSON,
+All state lives in `.sky-eye/` inside the reviewed repo (session JSON,
 config, logs) — never in the sky-eye install.
 
 ## Configuration
 
-All config lives in `<repo>/.sky-watch/config.json` (inside the ignored
+All config lives in `<repo>/.sky-eye/config.json` (inside the ignored
 folder — keys never land in git/jj). Missing file or missing keys never
 block anything: LLM-powered features are simply skipped and you get the
 purely local experience (rule-based marks, "unanalyzed" chapters).

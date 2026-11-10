@@ -12,12 +12,12 @@ import {
 } from "../src/custom-classifier.ts";
 import type { Chapter, FileSlice, Hunk } from "../src/types.ts";
 
-// temp repo with a .sky-watch/config.json
+// temp repo with a .sky-eye/config.json
 const withConfig = (body: unknown): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cl-"));
-  fs.mkdirSync(path.join(dir, ".sky-watch"), { recursive: true });
+  fs.mkdirSync(path.join(dir, ".sky-eye"), { recursive: true });
   if (body !== null)
-    fs.writeFileSync(path.join(dir, ".sky-watch", "config.json"), JSON.stringify(body));
+    fs.writeFileSync(path.join(dir, ".sky-eye", "config.json"), JSON.stringify(body));
   return dir;
 };
 

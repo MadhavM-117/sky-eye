@@ -18,9 +18,9 @@ function makeRepo(): string {
   git(repo, "init", "-b", "main");
   git(repo, "config", "user.email", "test@example.com");
   git(repo, "config", "user.name", "Test");
-  // main.ts writes this at startup — without it .sky-watch/ state would leak
+  // main.ts writes this at startup — without it .sky-eye/ state would leak
   // into the very diffs the server builds
-  fs.writeFileSync(path.join(repo, ".gitignore"), ".sky-watch/\n");
+  fs.writeFileSync(path.join(repo, ".gitignore"), ".sky-eye/\n");
   fs.writeFileSync(path.join(repo, "base.txt"), "line1\nline2\nline3\n");
   fs.mkdirSync(path.join(repo, "src"));
   fs.writeFileSync(path.join(repo, "src", "a.ts"), "old one\nold two\n");
@@ -378,7 +378,7 @@ test("ignore-file upkeep: gitignore appended, dockerignore untouched", async () 
   const { upsertIgnoreFile } = await import("../src/ignore.ts");
   upsertIgnoreFile(repo, ".gitignore", true);
   upsertIgnoreFile(repo, ".dockerignore", fs.existsSync(path.join(repo, ".dockerignore")));
-  assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /\.sky-watch\//);
+  assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /\.sky-eye\//);
   assert.ok(!fs.existsSync(path.join(repo, ".dockerignore")));
   fs.rmSync(repo, { recursive: true, force: true });
 });
@@ -495,9 +495,9 @@ function makeJjRepo(): string {
   const jj = (...args: string[]) =>
     execFileSync("jj", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   jj("git", "init");
-  // main.ts writes this at startup — without it .sky-watch/ state would leak
+  // main.ts writes this at startup — without it .sky-eye/ state would leak
   // into the very diffs the server builds
-  fs.writeFileSync(path.join(repo, ".gitignore"), ".sky-watch/\n");
+  fs.writeFileSync(path.join(repo, ".gitignore"), ".sky-eye/\n");
   jj("config", "set", "--repo", "user.name", "Test");
   jj("config", "set", "--repo", "user.email", "test@example.com");
   fs.writeFileSync(path.join(repo, "f.txt"), "one\ntwo\nthree\n");
@@ -584,9 +584,9 @@ test("integration: custom classifier overrides rules marks, logged", async () =>
   await withServer(async (port, repo) => {
     portOf = port;
     fs.writeFileSync(path.join(repo, ".classifier.mjs"), CL_SCRIPT);
-    fs.mkdirSync(path.join(repo, ".sky-watch"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".sky-eye"), { recursive: true });
     fs.writeFileSync(
-      path.join(repo, ".sky-watch", "config.json"),
+      path.join(repo, ".sky-eye", "config.json"),
       CL_CONFIG("node .classifier.mjs", { debug: true }),
     );
     const refs = await get("/api/refs");
@@ -598,9 +598,9 @@ test("integration: custom classifier overrides rules marks, logged", async () =>
     assert.ok(attention.length > 0);
     assert.ok(attention.every((m: any) => m.markSource === "custom" && m.mark === "custom-hot"));
 
-    // log entry written to .sky-watch/logs/ (task 016), one run per file —
+    // log entry written to .sky-eye/logs/ (task 016), one run per file —
     // overwritten, so the next run keeps only the most recent log
-    const logPath = path.join(repo, ".sky-watch", "logs", "classifier.log");
+    const logPath = path.join(repo, ".sky-eye", "logs", "classifier.log");
     const log1 = JSON.parse(fs.readFileSync(logPath, "utf8"));
     assert.equal(log1.failed, false);
     assert.equal(log1.marksOut, attention.length);
@@ -615,19 +615,19 @@ test("integration: custom classifier overrides rules marks, logged", async () =>
     });
     const log2 = JSON.parse(fs.readFileSync(logPath, "utf8"));
     assert.notEqual(log2.request, log1.request); // different base/head → different transcript
-    assert.ok(!fs.existsSync(path.join(repo, ".sky-watch", "classifier.log.1")));
+    assert.ok(!fs.existsSync(path.join(repo, ".sky-eye", "classifier.log.1")));
   });
 });
 
 test("integration: broken classifier → fallback keeps rules; fallback:false clears", async () => {
   await withServer(async (port, repo) => {
     portOf = port;
-    fs.mkdirSync(path.join(repo, ".sky-watch"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".sky-eye"), { recursive: true });
     const refs = await get("/api/refs");
     const body = { base: refs.body.defaultBase.id, head: refs.body.head.id };
 
     // default fallback: rules marks survive the failure
-    fs.writeFileSync(path.join(repo, ".sky-watch", "config.json"), CL_CONFIG("exit 3"));
+    fs.writeFileSync(path.join(repo, ".sky-eye", "config.json"), CL_CONFIG("exit 3"));
     const fallback = await mut("POST", "/api/sessions", body);
     const rulesAttention = attentionOf(fallback.body);
     assert.ok(rulesAttention.length > 0);
@@ -636,7 +636,7 @@ test("integration: broken classifier → fallback keeps rules; fallback:false cl
     // fallback:false: the classifier is authoritative — marks cleared (visible
     // failure, not silent stale marks). New commit → distinct session id.
     fs.writeFileSync(
-      path.join(repo, ".sky-watch", "config.json"),
+      path.join(repo, ".sky-eye", "config.json"),
       CL_CONFIG("exit 3", { fallback: false }),
     );
     git(repo, "commit", "--allow-empty", "-m", "another head");
@@ -646,7 +646,7 @@ test("integration: broken classifier → fallback keeps rules; fallback:false cl
       head: refs2.body.head.id,
     });
     assert.equal(attentionOf(cleared.body).length, 0);
-    const log = JSON.parse(fs.readFileSync(path.join(repo, ".sky-watch", "logs", "classifier.log"), "utf8"));
+    const log = JSON.parse(fs.readFileSync(path.join(repo, ".sky-eye", "logs", "classifier.log"), "utf8"));
     assert.equal(log.failed, true);
   });
 });
@@ -721,7 +721,7 @@ test("rerun: no config → skip; custom adapter → narrative + confirm guard (s
 
     // custom adapter (§22.2): the whole server path fires without network —
     // the script echoes a fixed narrative and re-marks nothing
-    const dir = path.join(repo, ".sky-watch");
+    const dir = path.join(repo, ".sky-eye");
     fs.mkdirSync(dir, { recursive: true });
     const script = path.join(dir, "adapter.sh");
     fs.writeFileSync(
@@ -763,7 +763,7 @@ test("rerun: no config → skip; custom adapter → narrative + confirm guard (s
 
 test("creation is eager: chapters fully analysed before the session is served (spec §16.2)", async () => {
   await withServer(async (_port, repo) => {
-    const dir = path.join(repo, ".sky-watch");
+    const dir = path.join(repo, ".sky-eye");
     fs.mkdirSync(dir, { recursive: true });
     const script = path.join(dir, "adapter.sh");
     fs.writeFileSync(
@@ -827,8 +827,8 @@ test("archive/delete: archive moves the file, unarchive restores, delete removes
     assert.equal(archived.body.length, 1);
     assert.equal(archived.body[0].id, id);
     await get(`/api/sessions/${enc}`, 404);
-    assert.ok(fs.existsSync(path.join(repo, ".sky-watch", "archive", `${id}.json`)));
-    assert.ok(!fs.existsSync(path.join(repo, ".sky-watch", `${id}.json`)));
+    assert.ok(fs.existsSync(path.join(repo, ".sky-eye", "archive", `${id}.json`)));
+    assert.ok(!fs.existsSync(path.join(repo, ".sky-eye", `${id}.json`)));
 
     // unarchive → back in the active list, loadable again
     assert.equal((await mut("POST", `/api/sessions/${enc}/unarchive`, {})).status, 200);
@@ -860,7 +860,7 @@ test("rechunk: pure fallback keeps ids; chunk adapter regroups with titles; 409 
 
     // chunk adapter via the custom exec hook: groups h0, unknown ids dropped →
     // leftovers land in trailing pure-chunked chapters
-    const dir = path.join(repo, ".sky-watch");
+    const dir = path.join(repo, ".sky-eye");
     fs.mkdirSync(dir, { recursive: true });
     const script = path.join(dir, "chunk.sh");
     fs.writeFileSync(

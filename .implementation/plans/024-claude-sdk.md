@@ -9,7 +9,7 @@ the existing providers; nothing about openai/anthropic/custom changes.
 ## Current state (what the code does today)
 
 - `src/llm.ts` is the adapters-only module. `resolveTask(root, task)` loads
-  `.sky-watch/config.json`, merges `defaults` + `tasks.<task>`, and picks an
+  `.sky-eye/config.json`, merges `defaults` + `tasks.<task>`, and picks an
   adapter: `cfg.command` → custom exec adapter, `cfg.provider === "anthropic"`
   → native `/v1/messages` via fetch, else OpenAI-compatible chat completions.
 - `LlmTaskConfig` (src/types.ts:68): `provider?: "openai" | "anthropic"`,
@@ -287,7 +287,7 @@ No other docs (`docs/design.md`, `docs/ux.md` don't enumerate providers).
   lockfile; the server runs via node type-stripping — no build-step impact).
 - No migration: existing config files without `provider: "claude"` behave
   exactly as before.
-- Manual acceptance: a repo with `.sky-watch/config.json`
+- Manual acceptance: a repo with `.sky-eye/config.json`
   `{"defaults": {"provider": "claude", "model": "claude-sonnet-4-5"}}` +
   `ANTHROPIC_API_KEY` (or a `CLAUDE_CODE_OAUTH_TOKEN` from a Pro/Max
   subscription) → session creation shows narratives + LLM marks; unset

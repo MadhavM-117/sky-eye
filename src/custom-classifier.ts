@@ -15,7 +15,7 @@ import type { Chapter, ClassifierConfig, ClassifyRules, LineMark } from "./types
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
-const configPath = (root: string) => path.join(root, ".sky-watch", "config.json");
+const configPath = (root: string) => path.join(root, ".sky-eye", "config.json");
 
 // missing/invalid config → undefined: the custom pass is a no-op, sessions
 // never block on it (§16.1 rule)
@@ -239,11 +239,11 @@ function shRun(
   });
 }
 
-// All generated logs live in `.sky-watch/logs/` (task 016), and only the
+// All generated logs live in `.sky-eye/logs/` (task 016), and only the
 // most recent run is kept: each run overwrites the file (no rotation).
 function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): void {
   try {
-    const dir = path.join(root, ".sky-watch", "logs");
+    const dir = path.join(root, ".sky-eye", "logs");
     fs.mkdirSync(dir, { recursive: true });
     const log = path.join(dir, "classifier.log");
     const tail = (s: string, n: number) => (s.length > n ? "…" + s.slice(-n) : s);

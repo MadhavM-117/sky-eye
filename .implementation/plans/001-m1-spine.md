@@ -3,7 +3,7 @@
 **Task:** `.implementation/tasks/001-m1-spine.md` · **Spec:** `docs/spec.md` §2–§5, §7–§11, §18–§21 (M1)
 **Acceptance (spec §21 M1):** run in a git and a colocated jj repo; pick base; see
 highlighted chaptered two-column diff; browse repo files at base/head; edit
-narrative/label and reload persists; CSRF mutations rejected; `.sky-watch/` ignored
+narrative/label and reload persists; CSRF mutations rejected; `.sky-eye/` ignored
 without creating `.dockerignore` in non-Docker repos.
 
 **M1 scope boundary:** sessions, refs, tree/file, diff, chunker (basic), first screen +
@@ -117,9 +117,9 @@ function upsertIgnoreFile(root: string, name: string, create: boolean) {
   const p = path.join(root, name);
   if (create && !fs.existsSync(p)) { fs.writeFileSync(p, "\n"); }          // only .gitignore
   let lines = fs.readFileSync(p, "utf8").split("\n");
-  if (lines.some(l => /^\s*\.sky-watch\/?\s*$/.test(l))) return;
+  if (lines.some(l => /^\s*\.sky-eye\/?\s*$/.test(l))) return;
   if (lines.at(-1)?.trim() !== "") lines.push("");                          // trailing newline
-  lines.push(".sky-watch/");
+  lines.push(".sky-eye/");
   fs.writeFileSync(p, lines.join("\n"));
 }
 ```
@@ -294,7 +294,7 @@ export function parseUnifiedDiff(text: string): FileDiff[]
 ### `src/chunker.ts` (new) — spec §8, M1 = basic size splitting
 
 ```ts
-export interface ReviewConfig { targetLines: number; maxLines: number }   // from .sky-watch/config.json, default {75, 200}
+export interface ReviewConfig { targetLines: number; maxLines: number }   // from .sky-eye/config.json, default {75, 200}
 export function chunk(files: FileDiff[], config: ReviewConfig = { targetLines: 75, maxLines: 200 }): Chapter[]
 ```
 
@@ -312,7 +312,7 @@ predicate is the single place they hook in:
 // narrative: "unanalyzed" for now (M7 fills it)
 ```
 
-- `loadConfig(root)` reads `.sky-watch/config.json`, picks the `review` block, defaults
+- `loadConfig(root)` reads `.sky-eye/config.json`, picks the `review` block, defaults
   on missing/invalid — lives in `store.ts` or `chunker.ts`, used only by session creation.
 
 ### `src/store.ts` (new) — spec §9
@@ -320,7 +320,7 @@ predicate is the single place they hook in:
 ```ts
 export const VALID_SESSION_ID = /^[0-9a-zA-Z][0-9a-zA-Z+-]*\.\.[0-9a-zA-Z][0-9a-zA-Z+-]*$/;
 // validate every session id from URL/body/import before fs or CLI use (traversal + flag-injection guard)
-const dir = (root: string) => path.join(root, ".sky-watch");
+const dir = (root: string) => path.join(root, ".sky-eye");
 ```
 
 - `save(root, session)`: bump `lastWriteAt` + `updatedAt`, write
@@ -467,7 +467,7 @@ Zero-dependency line tokenizer for **JS/TS, Python, Rust, Go, JSON**:
    M1 acceptance (jj CLI in CI-less local test is fine too — recipe below).
 4. **Manual acceptance recipe** (M1 accept, spec §21): run `npx sky-eye` in this jj
    repo → create review of `@` vs `trunk` → chapters + highlighting visible; then in a
-   scratch git repo same flow; check `.sky-watch/` ignored, no `.dockerignore` created;
+   scratch git repo same flow; check `.sky-eye/` ignored, no `.dockerignore` created;
    edit narrative + label, reload → persisted; curl a non-GET without the header → 403.
 
 ---

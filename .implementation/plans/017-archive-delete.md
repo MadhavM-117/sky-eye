@@ -3,7 +3,7 @@
 ## Design decisions (spec §10 updated)
 
 - Archive = `fs.renameSync` of the session file into
-  `.sky-watch/archive/<id>.json`. Unarchive = rename back. Delete =
+  `.sky-eye/archive/<id>.json`. Unarchive = rename back. Delete =
   `unlinkSync` of the active or archived file. All after `sessionId()`
   validation (traversal-safe, §9.2).
 - Archived sessions are **not openable** (`loadSession` stays active-only):
@@ -30,7 +30,7 @@
 
 ## What could break
 
-- `listSessions` currently `readdirSync`'s `.sky-watch/` non-recursively —
+- `listSessions` currently `readdirSync`'s `.sky-eye/` non-recursively —
   subdirs never appear as `.json` files; no filtering needed.
 - Import of an archived session's JSON would recreate it as active —
   acceptable (import is additive by design, §14).

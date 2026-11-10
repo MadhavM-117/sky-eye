@@ -11,7 +11,7 @@ and hold at most one contiguous slice per file.
 **Deliverable/acceptance:** chunker merges small adjacent-file hunks into one
 chapter; comments anchor/re-pin correctly inside multi-file chapters.
 **No legacy migration** (decided): sessions persisted before this schema are
-treated as absent — `.sky-watch/` is derived cache, losing old sessions is
+treated as absent — `.sky-eye/` is derived cache, losing old sessions is
 accepted. Spec §8/§9.3/§13 updated (done with this task's doc edits);
 design.md D§3 row 2 + D§4 updated.
 

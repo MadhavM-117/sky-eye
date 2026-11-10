@@ -12,7 +12,7 @@ User runs `sky-eye` inside a repository. The tool:
 
 1. Detects the repo root and kind (see 1.2). Not in a repo → clear terminal
    error, no browser opens.
-2. Ensures its state folder `.sky-watch/` inside the repo is ignored:
+2. Ensures its state folder `.sky-eye/` inside the repo is ignored:
    appended to `.gitignore` (created if missing; jj honors gitignore too) and,
    if `.dockerignore` exists, to `.dockerignore`.
 3. Starts the local server bound to `127.0.0.1` on its preferred port; if that
@@ -22,7 +22,7 @@ User runs `sky-eye` inside a repository. The tool:
    `sky-eye serving /path/to/repo (jj repo) → http://localhost:4800`
 5. Opens the browser at that URL automatically (`xdg-open` / `open`).
 
-All state lives in `.sky-watch/` and all stored paths are repo-relative, so
+All state lives in `.sky-eye/` and all stored paths are repo-relative, so
 moving or renaming the repo directory does not break existing sessions.
 
 The terminal line and the app header (see 3.1) together make it unambiguous

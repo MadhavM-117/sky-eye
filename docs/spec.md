@@ -12,7 +12,7 @@ referenced as `D§n` (design) and `U§n` (ux).
 A local web app that turns a git/jj branch diff into a chaptered, readable
 review: PR-style two-column diff, split into ~50–100-line chapters with
 narrative overviews, per-line attention marks, and content-anchored comments
-that survive rebases. Sessions persist as JSON in `.sky-watch/` and export
+that survive rebases. Sessions persist as JSON in `.sky-eye/` and export
 as single files. No GitHub/GitLab API, no auth, no server deployment.
 
 **Non-goals (D§10, U§4):** auth/multi-user, markdown in comments, inline
@@ -76,7 +76,7 @@ sky-eye/
 │   ├── remap.ts              # re-anchor comments onto a new diff
 │   ├── identity.ts           # author name/email from jj/git config
 │   ├── store.ts              # session files: load/save/list/merge-import, atomic writes
-│   └── llm.ts                # OpenAI-compatible client + config loading (.sky-watch/config.json)
+│   └── llm.ts                # OpenAI-compatible client + config loading (.sky-eye/config.json)
 │   └── public/               # source; bundled by esbuild → public/dist/ (served statically)
 │       ├── index.html
 │       ├── app.js            # router + views (first screen / session / explorer)
@@ -90,7 +90,7 @@ sky-eye/
 │   ├── diffparse.test.ts
 │   ├── remap.test.ts         # anchor scoring fixtures
 │   └── integration.test.ts   # real temp git repo, spine smoke test
-└── .sky-watch/               # created per-user-repo, never in this repo
+└── .sky-eye/               # created per-user-repo, never in this repo
 ```
 
 ## 4. Server core (D§2, U§1.1)
@@ -180,10 +180,10 @@ informative message when `defaultBase` is null and no base candidates exist.
 
 ## 6. Ignore-file upkeep (D§3 row 0a, U§1.1.2)
 
-At startup, ensure `.sky-watch/` is ignored:
+At startup, ensure `.sky-eye/` is ignored:
 
-- `.gitignore`: if no line matching `^\s*\.sky-watch/?\s*$` exists, append
-  `\n.sky-watch/\n` (creating `.gitignore` with a trailing newline if missing;
+- `.gitignore`: if no line matching `^\s*\.sky-eye/?\s*$` exists, append
+  `\n.sky-eye/\n` (creating `.gitignore` with a trailing newline if missing;
   jj honors `.gitignore`).
 - `.dockerignore`: **only if `.dockerignore` already exists**, perform the
   same check/append. Never create a new `.dockerignore` in a repo that does
@@ -267,7 +267,7 @@ Algorithm:
    `newStart = 0, newLines = 0`. Stable under re-running the chunker on an
    identical diff; breaks when the diff changes (accepted, D§11).
 
-**Config knob:** chapter size limits live in `.sky-watch/config.json` under
+**Config knob:** chapter size limits live in `.sky-eye/config.json` under
 `"review": { "targetLines": 75, "maxLines": 200 }` (see §16.3; Open
 Question on whether a UI for this is ever needed — v1: file only).
 
@@ -343,10 +343,10 @@ narrative → the usual 409 `needsConfirm` gate (§10).
 
 ### 9.2 File layout & atomic writes
 
-- One file per session: `.sky-watch/<sessionId>.json`. Archived sessions
-  move to `.sky-watch/archive/<sessionId>.json` (same format; not openable
+- One file per session: `.sky-eye/<sessionId>.json`. Archived sessions
+  move to `.sky-eye/archive/<sessionId>.json` (same format; not openable
   in place — restore first, §10). Generated logs live in
-  `.sky-watch/logs/` (§16.5). Both are subdirectories, so `list()`
+  `.sky-eye/logs/` (§16.5). Both are subdirectories, so `list()`
   (non-recursive) only ever sees active sessions.
 - **Filename & CLI flag safety:** session ids from URLs, bodies, or imports
   are validated against
@@ -376,7 +376,7 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   (§8a); absent from pure-chunked chapters; feeds the chapter rail row and
   the classifier/narrate context. **No legacy
   migration:** sessions persisted before this schema are treated as absent
-  (`.sky-watch/` is derived cache; losing pre-multi-file sessions/comments
+  (`.sky-eye/` is derived cache; losing pre-multi-file sessions/comments
   is an accepted tradeoff).
 - `Chapter.viewedFiles: string[]` — repo-relative paths of the chapter's
   file slices marked viewed, persisted as an exact list (always a subset of
@@ -415,7 +415,7 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 
 | Route | Request | Response / behavior |
 |---|---|---|
-| `GET /api/sessions` | — | `[{ id, aliases, label, updatedAt, openComments, reviewed }]`; `?archived=1` lists `.sky-watch/archive/` instead (same header shape) |
+| `GET /api/sessions` | — | `[{ id, aliases, label, updatedAt, openComments, reviewed }]`; `?archived=1` lists `.sky-eye/archive/` instead (same header shape) |
 | `GET /api/sessions/:id` | — | full stored `Session` plus computed `stale: boolean` (see §13.1) |
 | `GET /api/refs` | — | §5 |
 | `GET /api/tree?ref=&dir=[&recursive=1]` | — | `[{ name, type: "dir"|"file", path }]`; `dir` defaults to root; with `recursive=1` returns every *file* path at `ref`, flat (dirs derived by the client tree) — feeds the explorer's whole-repo `FileTree`, whose search needs the full path list; read from VCS object store at `ref`, repo-relative, contained (§11) |
@@ -427,7 +427,7 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter (sessions are analysed at creation, §16.2; this is manual regeneration); if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }` |
 | `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative → same 409 `needsConfirm` gate as above |
 | `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives and viewedFiles by chapter id, remaps comments (§13.3); any edited narrative → 409 `needsConfirm` gate as above |
-| `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-watch/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
+| `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-eye/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
 | `POST /api/sessions/:id/unarchive` | — | moves an archived session back to the active list |
 | `DELETE /api/sessions/:id` | — | permanently deletes the session file, active or archived |
 | `POST /api/sessions/:id/refresh` | — | §13; returns `{ session, supersededBy? }` |
@@ -588,7 +588,7 @@ during step 4. This is the D§11 risk, accepted.
 
 ### 16.1 Config
 
-`.sky-watch/config.json` (inside the ignored folder — keys never land in
+`.sky-eye/config.json` (inside the ignored folder — keys never land in
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
 `narrate` / `classify` / `chunk` (`apiKey`, `model`, `baseUrl`, `provider`, plus
 `authToken` for the claude provider (§22.2: `@anthropic-ai/sdk` —
@@ -691,7 +691,7 @@ tasks). Responses answer at `answers[<qKey>].choice`.
 **Shared semantics** — a failed run (non-zero exit, timeout, HTTP error,
 malformed output) falls back to rules marks unless
 `classifier.fallback: false`, in which case marks are cleared. Every run
-logged to `.sky-watch/logs/classifier.log`, overwritten per run — only the
+logged to `.sky-eye/logs/classifier.log`, overwritten per run — only the
 most recent run is kept (user decision, task 016; full transcript with
 `classifier.debug`);
 `sky-eye debug-classify <sessionId>` replays the configured backend against
@@ -893,7 +893,7 @@ view + syntax highlighting — all rendering via the `@pierre/*` bundles (§18,
 §19); binary/empty-diff handling.
 *Accept:* run `sky-eye` in a git and a colocated jj repo; pick base; see
 highlighted chapters and browse repo files at base/head; edit narrative/label
-and reload; a second browser tab cannot CSRF mutations; `.sky-watch/` ignored
+and reload; a second browser tab cannot CSRF mutations; `.sky-eye/` ignored
 without creating `.dockerignore` in non-Docker repos.
 
 **M2 — Comments.** Deliver: composer UI, `identity.ts`, `POST/PATCH

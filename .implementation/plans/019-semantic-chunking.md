@@ -43,7 +43,7 @@ titles, a UI config editor for chunk settings.
 
 ## Approach
 
-Add a third LLM task **`chunk`**. When `.sky-watch/config.json` resolves a
+Add a third LLM task **`chunk`**. When `.sky-eye/config.json` resolves a
 `tasks.chunk` adapter, the rebuild pipeline makes one blocking LLM call that
 gets a compact hunk inventory and returns a grouping of hunks into titled
 chapters. Everything else (rules marks, classifier pass, chapter ids, anchors,

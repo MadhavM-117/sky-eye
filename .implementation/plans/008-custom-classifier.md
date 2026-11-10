@@ -25,5 +25,5 @@ Outline (see the full plan for details):
 7. Tests — `tests/custom-classifier.test.ts` (fixtures), `classify.test.ts`
    (glob precedence), `integration.test.ts` (happy + failure path via
    scripted classifier).
-8. Demo — `tmp/demo/classifier.mjs` + `.sky-watch/config.json` for the
+8. Demo — `tmp/demo/classifier.mjs` + `.sky-eye/config.json` for the
    M5.1 acceptance walkthrough.

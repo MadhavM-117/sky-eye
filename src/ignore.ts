@@ -1,4 +1,4 @@
-// Ensure .sky-watch/ stays out of git/jj/docker (spec §6).
+// Ensure .sky-eye/ stays out of git/jj/docker (spec §6).
 import fs from "node:fs";
 import path from "node:path";
 
@@ -7,13 +7,13 @@ export function upsertIgnoreFile(root: string, name: string, create: boolean) {
   try {
     if (!fs.existsSync(p)) {
       if (!create) return; // never create .dockerignore (spec §6)
-      fs.writeFileSync(p, ".sky-watch/\n");
+      fs.writeFileSync(p, ".sky-eye/\n");
       return;
     }
     const lines = fs.readFileSync(p, "utf8").split("\n");
-    if (lines.some((l) => /^\s*\.sky-watch\/?\s*$/.test(l))) return;
+    if (lines.some((l) => /^\s*\.sky-eye\/?\s*$/.test(l))) return;
     if (lines.at(-1) !== "") lines.push("");
-    lines.push(".sky-watch/");
+    lines.push(".sky-eye/");
     // join drops the final newline — re-add it
     fs.writeFileSync(p, lines.join("\n") + "\n");
   } catch (e) {

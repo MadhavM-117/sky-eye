@@ -41,7 +41,7 @@ route("GET", "/api/file", async ({ root, kind, url }) => {
 });
 
 route("GET", "/api/sessions", ({ root, url }) =>
-  // ?archived=1 lists .sky-watch/archive/ instead (task 017, spec §10)
+  // ?archived=1 lists .sky-eye/archive/ instead (task 017, spec §10)
   listSessions(root, url.searchParams.get("archived") === "1"),
 );
 
@@ -128,7 +128,7 @@ route("POST", "/api/sessions/:id/rechunk", async ({ root, kind, params, body }) 
   ));
 
 // archive/delete (task 017, spec §10): archive moves the file into
-// .sky-watch/archive/ (restore via unarchive), delete removes it permanently
+// .sky-eye/archive/ (restore via unarchive), delete removes it permanently
 route("POST", "/api/sessions/:id/archive", ({ root, params }) =>
   archiveSession(root, params.id));
 route("POST", "/api/sessions/:id/unarchive", ({ root, params }) =>

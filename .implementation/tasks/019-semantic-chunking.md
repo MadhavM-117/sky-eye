@@ -1,7 +1,7 @@
 # 019 — Semantic chunking (LLM-assisted chapter grouping)
 
 **Goal:** chapter splitting becomes semantic when configured: a `chunk` LLM
-task (`tasks.chunk` in `.sky-watch/config.json`) groups the diff's hunks into
+task (`tasks.chunk` in `.sky-eye/config.json`) groups the diff's hunks into
 titled chapters in one call — grouping + titles + analysis in the same step.
 The classifier pass receives each chapter with its title as context. Any
 failure or missing config falls back to the pure chunker (§16.1 degradation

@@ -24,7 +24,7 @@ files you can export and share.
 │  (SPA)     │   sessions, comments,        │              │──► LLM (opt-in, config file)
 └────────────┘   export/import, files        └──────┬───────┘
                                                    ▼
-                                     .sky-watch/<session-id>.json
+                                     .sky-eye/<session-id>.json
 ```
 
 - **Server**: one small HTTP server (plain `node:http`),
@@ -50,7 +50,7 @@ files you can export and share.
   dependency-free — see §8). The interesting logic (diff parsing, chunking,
   remap) is server-side TypeScript in `src/`; the browser gets data, not
   logic.
-- **State**: one JSON file per review session in `.sky-watch/` (see §4). The
+- **State**: one JSON file per review session in `.sky-eye/` (see §4). The
   export file *is* this file.
 - **Paths are relative**: all file paths in session JSON and API responses
   are relative to the repo root, so moving or renaming the repo directory
@@ -61,7 +61,7 @@ files you can export and share.
 | # | Requirement | Component | Notes |
 |---|---|---|---|
 | 0 | Repo detection + ref discovery | `refs.ts` | `.jj` dir → jj mode (colocated: jj wins), else git mode; `GET /api/refs` returns root/kind, current head, default base, bookmarks/branches, recent commits; discovery gaps → 200 with empty lists, never errors |
-| 0a | Ignore-file upkeep | startup step | ensure `.sky-watch/` is ignored: append to `.gitignore` (created if missing; also honored by jj) and to `.dockerignore` (only if `.dockerignore` already exists) |
+| 0a | Ignore-file upkeep | startup step | ensure `.sky-eye/` is ignored: append to `.gitignore` (created if missing; also honored by jj) and to `.dockerignore` (only if `.dockerignore` already exists) |
 | 0b | File explorer | `tree.ts` + frontend | GitHub/GitLab-style repo tree browsing and read-only file viewing (§6b) |
 | 1 | GitHub-style diff view | frontend diff renderer + `diff.ts` | hunks with context lines; one chapter at a time with a chapter rail for navigation (frontend-only, ux.md §3.2–3.3) |
 | 1a | Syntax highlighting | `@pierre/highlights` (via `@pierre/diffs` rendering) | tree-sitter-grade WAT/WASM highlighter, 152 languages, plain-text fallback; applied to file views and diff lines alike — key requirement (§6b) |
@@ -109,7 +109,7 @@ Branch names encountered at creation time are stored as `baseRef` / `headRef`
 and `aliases`.
 
 Multiple sessions exist side by side — one file per session under
-`.sky-watch/`, no locking between them.
+`.sky-eye/`, no locking between them.
 
 ### Types
 
@@ -273,7 +273,7 @@ How a chapter summary is produced:
   confirmation before overwriting; while generation runs, the edit button
   is hidden behind the loading indicator. No LLM needed to edit — the
   editor opens over "unanalyzed" too.
-- **Per-task model/key config**: a config file at `.sky-watch/config.json`
+- **Per-task model/key config**: a config file at `.sky-eye/config.json`
   (inside the ignored state folder, so keys never land in git/jj/docker).
   Tasks (v1: `narrate`, `classify`, `chunk`; the classifier pass (spec §16.5 — exec
   hook or built-in backends — OpenRouter's decision-model API
@@ -382,7 +382,7 @@ sky-eye/
 │   └── public/         # index.html, app.js, pierre adapter, style.css
 │                       # bundled by esbuild → public/dist/ (frontend-only build;
 │                       # @pierre/* deps are frontend runtime deps, §2)
-├── .sky-watch/         # one session json per file; kept out of git/jj/docker
+├── .sky-eye/         # one session json per file; kept out of git/jj/docker
 │                       # by ignore-file upkeep at startup (§3, row 0a)
 └── tests/              # chunker + remap fixtures first — that's where the bugs live
 ```

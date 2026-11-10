@@ -1,6 +1,6 @@
 # 017 — Archive / delete a review
 
-**Goal:** archive a review (file moves to `.sky-watch/archive/`, out of the
+**Goal:** archive a review (file moves to `.sky-eye/archive/`, out of the
 active list) or delete it permanently. UI + API.
 
 **Status:** **done** — `POST /api/sessions/:id/archive`,

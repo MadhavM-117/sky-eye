@@ -17,7 +17,7 @@
    `targetLines` therefore only governs the no-context fallback path — that
    is what §8.2+§8.4 combined imply.
 3. **Size config knob:** already done in M1 (`loadConfig`, `"review"` in
-   `.sky-watch/config.json`) — no change, just covered by tests.
+   `.sky-eye/config.json`) — no change, just covered by tests.
 4. **§22.5 large-diff decision:** decide "chaptering is the virtualization;
    no swap now, `FileDiff` → `VirtualizedFileDiff` is the upgrade path if a
    real diff crawls" — write back into spec §22.5 and fix §18's speculative

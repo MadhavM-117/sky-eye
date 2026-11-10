@@ -124,7 +124,7 @@ test("importSession: unknown id creates the session, known id merges in place", 
     const imported = session({ comments: [comment("e1", { text: "from A" })] });
     const created = await importSession(root, "git", imported);
     assert.equal(created.comments[0].text, "from A");
-    assert.ok(fs.existsSync(path.join(root, ".sky-watch", "aaa..bbb.json")));
+    assert.ok(fs.existsSync(path.join(root, ".sky-eye", "aaa..bbb.json")));
 
     // merge: local edit (newer) survives re-importing the older export
     created.comments[0].text = "edited on B";

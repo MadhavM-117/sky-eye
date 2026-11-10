@@ -39,7 +39,7 @@ export type LineMark = {
   markSource: "rules" | "llm" | "custom";
 };
 
-// classifier pass (spec §16.5) — .sky-watch/config.json → `classifier`.
+// classifier pass (spec §16.5) — .sky-eye/config.json → `classifier`.
 // Two backends: the exec hook (`command`) and built-in backends (`builtin`,
 // first: OpenRouter's decision-model API — model e.g. typesafe/jev-1.14). `command` wins when both set.
 export interface ClassifierConfig {
@@ -61,7 +61,7 @@ export interface ClassifyRules {
   focusPaths?: string[];
 }
 
-// LLM task config (spec §16.1, §22.2): `defaults` in .sky-watch/config.json
+// LLM task config (spec §16.1, §22.2): `defaults` in .sky-eye/config.json
 // plus per-task overrides for narrate/classify. `command` switches to the
 // custom exec adapter; otherwise `provider` picks openai (default),
 // anthropic (raw Messages API), or claude (@anthropic-ai/sdk —

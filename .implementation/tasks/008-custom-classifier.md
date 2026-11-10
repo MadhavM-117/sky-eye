@@ -11,7 +11,7 @@ as a neutral glyph; task 009 moved marks to the gutter column) and
 **Deliverable/acceptance** (spec §21 M5.1): a scripted classifier in
 `tmp/demo` → session creation shows `markSource: "custom"` marks; broken
 classifier → rules fallback (or cleared with `fallback:false`); every run
-logged to `.sky-watch/classifier.log`; `sky-eye debug-classify <sessionId>`
+logged to `.sky-eye/classifier.log`; `sky-eye debug-classify <sessionId>`
 prints the transcript.
 
 Spec: §16.5 (protocol), §16.1 (config keys), §16.4 (rules extension),

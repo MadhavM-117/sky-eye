@@ -13,7 +13,7 @@ Rough slices (detailed plan written when the task starts):
 
 **Deliverable/acceptance** (spec §21 M1): highlighted chapters and file
 explorer visible in both repo kinds; label/narrative edits and reload persist;
-CSRF mutations rejected; `.sky-watch/` ignored without creating `.dockerignore`
+CSRF mutations rejected; `.sky-eye/` ignored without creating `.dockerignore`
 in non-Docker repos.
 
 Notes: `style.css` defines all theme values as CSS custom properties from

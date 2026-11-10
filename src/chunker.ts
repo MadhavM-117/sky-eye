@@ -11,7 +11,7 @@ const DEFAULT_CONFIG: ReviewConfig = { targetLines: 75, maxLines: 200 };
 export function loadConfig(root: string): ReviewConfig {
   try {
     const parsed = JSON.parse(
-      fs.readFileSync(path.join(root, ".sky-watch", "config.json"), "utf8"),
+      fs.readFileSync(path.join(root, ".sky-eye", "config.json"), "utf8"),
     ) as { review?: Partial<ReviewConfig> };
     return { ...DEFAULT_CONFIG, ...parsed.review };
   } catch {

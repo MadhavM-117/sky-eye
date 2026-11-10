@@ -45,7 +45,7 @@ if (process.argv[2] === "debug-classify") {
   const session = loadSession(root, id);
   const config = loadClassifierConfig(root);
   if (!config) {
-    console.error("sky-eye: no classifier configured (.sky-watch/config.json → classifier.command / classifier.builtin)");
+    console.error("sky-eye: no classifier configured (.sky-eye/config.json → classifier.command / classifier.builtin)");
     process.exit(1);
   }
   const request = classifierRequest(root, session.base, session.head, session.chapters);

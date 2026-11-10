@@ -13,7 +13,7 @@
    slices joined by `|` (spec §8.5).
 3. **`src/store.ts`** — no legacy migration (decided): a session JSON whose
    chapters lack `files[]` fails validation and is treated as absent on
-   load. `.sky-watch/` is derived cache; losing old sessions/comments is
+   load. `.sky-eye/` is derived cache; losing old sessions/comments is
    accepted (user decision, recorded in task 006).
 4. **Consumers of `chapter.file` / `chapter.hunks`** — grep callers:
    `src/routes.ts` (comment capture, orphan triage), `src/remap.ts`
@@ -31,7 +31,7 @@
 - Remap: `chapterId` no longer implies file — every lookup must go
   chapter → slice containing `anchor.file` + line. Old-side comments still
   orphan immediately (unchanged).
-- Session schema: old `.sky-watch/*.json` need not load (no migration,
+- Session schema: old `.sky-eye/*.json` need not load (no migration,
   decided).
 - Chapter-id stability: ids differ from pre-006 sessions on the same diff
   (accepted — comments ride content anchors, not chapter ids, §13.4).
