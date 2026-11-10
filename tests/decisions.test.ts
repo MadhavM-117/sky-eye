@@ -14,11 +14,15 @@ import {
 import { applyClassifier, classifierRequest, loadClassifierConfig } from "../src/custom-classifier.ts";
 import type { Chapter, ClassifierConfig, Hunk } from "../src/types.ts";
 
+// isolate from the shell: a real OPENROUTER_API_KEY flips key-resolution
+// precedence and makes the "no key" path hit the network
+delete process.env.OPENROUTER_API_KEY;
+
 const withConfig = (body: unknown): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dec-"));
-  fs.mkdirSync(path.join(dir, ".sky-watch"), { recursive: true });
+  fs.mkdirSync(path.join(dir, ".sky-eye"), { recursive: true });
   if (body !== null)
-    fs.writeFileSync(path.join(dir, ".sky-watch", "config.json"), JSON.stringify(body));
+    fs.writeFileSync(path.join(dir, ".sky-eye", "config.json"), JSON.stringify(body));
   return dir;
 };
 
@@ -61,9 +65,12 @@ test("loadClassifierConfig: decision backend fills defaults, criteria validated"
 
 test("resolveApiKey: classifier key > env > llm defaults", () => {
   const cfg = loadClassifierConfig(withConfig({ classifier: decisionsCfg(), defaults: { apiKey: "llm-key" } }))!;
+  process.env.OPENROUTER_API_KEY = "env-key";
+  assert.equal(resolveApiKey(decisionsCfg() as never, withConfig({ classifier: decisionsCfg(), defaults: { apiKey: "llm-key" } })), "env-key");
+  delete process.env.OPENROUTER_API_KEY;
   assert.equal(resolveApiKey(cfg, withConfig({ classifier: decisionsCfg(), defaults: { apiKey: "llm-key" } })), "llm-key");
   const noKey = withConfig({ classifier: decisionsCfg() });
-  assert.equal(resolveApiKey(decisionsCfg()  as never, noKey), process.env.OPENROUTER_API_KEY);
+  assert.equal(resolveApiKey(decisionsCfg() as never, noKey), undefined);
 });
 
 // ---- request building -------------------------------------------------------

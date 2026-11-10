@@ -13,3 +13,8 @@
 - Built-in classifier shares the llm `defaults.apiKey` (resolution:
   `classifier.apiKey` → `OPENROUTER_API_KEY` env → llm defaults) — one
   OpenRouter key serves both the chapter analyser and the classifier.
+- Tests must `delete process.env.OPENROUTER_API_KEY` at file top: a real shell
+  key silently flips key-resolution precedence and makes "no key" test paths
+  fire real network calls.
+- `node --test <dir>` (Node 24) fails with MODULE_NOT_FOUND even for plain
+  `.test.js` dirs — pass a glob instead: `node --test "tests/**/*.test.ts"`.
