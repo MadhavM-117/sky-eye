@@ -40,14 +40,15 @@ export type LineMark = {
 };
 
 // classifier pass (spec §16.5) — .sky-eye/config.json → `classifier`.
-// Two backends: the exec hook (`command`) and built-in backends (`builtin`,
-// first: OpenRouter's decision-model API — model e.g. typesafe/jev-1.14). `command` wins when both set.
+// Two backends: the exec hook (`command`) and built-in decision-model
+// backends (`builtin`: OpenRouter's /alpha/decisions, OpenAI's /decisions).
+// `command` wins when both set.
 export interface ClassifierConfig {
   command?: string; // exec hook — JSON in/out on stdin/stdout
-  builtin?: "openrouter"; // OpenRouter decision-model API (/api/alpha/decisions)
-  model?: string; // required for jev (e.g. "typesafe/jev-1.14")
-  apiKey?: string; // falls back to OPENROUTER_API_KEY env, then llm defaults
-  baseUrl?: string; // default: https://openrouter.ai/api
+  builtin?: "openrouter" | "openai"; // decision-model API vendor
+  model?: string; // openrouter: required (e.g. "typesafe/jev-1.14"); openai: default "gpt-6-luna"
+  apiKey?: string; // falls back to OPENROUTER_API_KEY / OPENAI_API_KEY env, then llm defaults
+  baseUrl?: string; // default: https://openrouter.ai/api | https://api.openai.com/v1
   instructions?: string; // per-line question instruction override
   criteria?: Record<string, string>; // mark NAME → criteria description; default: rules buckets
   timeoutMs?: number; // default 30_000

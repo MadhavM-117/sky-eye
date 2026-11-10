@@ -14,7 +14,7 @@ the index is the lookup table, files are read on demand.
 - chapter-model.md — Chapter shape (multi-file slices), session load/create
   paths, frontend diff-instance keys
 - config.md — config.json loaders are per-concern (module owns its keys)
-- openrouter-decisions.md — OpenRouter decision-model API envelope, endpoint path, apiKey resolution chain
+- openrouter-decisions.md — decision-model API envelopes (OpenRouter + OpenAI), endpoint paths, apiKey resolution chains
 - server-protocol.md — route result shapes ({status,value}, {raw,headers}), security checks order
 - frontend-routing.md — explorer hash separator is `§<side>`, not `/<side>`
 - pierre-packages.md — gotcha (task 015): pierre `File` renders nothing when

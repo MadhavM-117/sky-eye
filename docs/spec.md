@@ -597,9 +597,11 @@ credentials resolve `apiKey` → `ANTHROPIC_API_KEY`, then `authToken` →
 subscriptions; no credential → task skipped) and
 `command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
 (classifier pass: `command` (exec hook), or built-in backends — `builtin:
-"openrouter"` + `model` (e.g. typesafe/jev-1.14) via OpenRouter — plus
-`apiKey` (falls back to
-`OPENROUTER_API_KEY` env, then the llm `defaults` key), `baseUrl`,
+"openrouter"` + `model` (e.g. typesafe/jev-1.14) via OpenRouter, or
+`builtin: "openai"` via OpenAI's Decisions API (`model` optional,
+default `gpt-6-luna`) — plus `apiKey` (falls back to
+`OPENROUTER_API_KEY` / `OPENAI_API_KEY` env respectively, then the llm
+`defaults` key), `baseUrl`,
 `instructions`, and `criteria` (mark NAME → criteria description; keys are
 the mark vocabulary, default = the rules buckets) — §16.5), and
 `classifyRules` (`safePaths` / `focusPaths` globs extending the built-in
@@ -675,18 +677,29 @@ additive field; hooks may ignore it) — in; sparse `marks` out, overriding
 rules marks per `(file, side, line)` with `markSource: "custom"`; unmarked
 lines keep rules marks. Invalid entries are dropped.
 
-**Built-in backends** — when `classifier.builtin: "openrouter"` (+
-`model`) is set, sky-eye itself classifies via **OpenRouter's
-decision-model API** (`POST
-{baseUrl:-https://openrouter.ai/api}/alpha/decisions`); any model served by
-it works — out of the box: typesafe's **jev** (`typesafe/jev-1.14`),
-one request per rebuild, one `choice` question per changed line, criteria =
-the configured `criteria` map (mark names = keys, descriptions = values;
-default = the rules buckets), diff rendered as `state` — with the chapter's
-semantic title (§8a) prefixed to its `state` block and appended to its
-questions' instructions when present. API key: `apiKey` →
-`OPENROUTER_API_KEY` env → llm `defaults` (one OpenRouter key serves both
-tasks). Responses answer at `answers[<qKey>].choice`.
+**Built-in backends** — `classifier.builtin` selects the vendor; both
+classify with one request per rebuild, one `choice` question per changed
+line, criteria = the configured `criteria` map (mark names = keys,
+descriptions = values; default = the rules buckets), the diff rendered as
+shared evidence with the chapter's semantic title (§8a) prefixed to its
+block and appended to its questions' instructions when present.
+
+- **OpenRouter** (`builtin: "openrouter"` + `model`; any model served by
+  it works — out of the box: typesafe's **jev** (`typesafe/jev-1.14`)):
+  `POST {baseUrl:-https://openrouter.ai/api}/alpha/decisions`; the diff is
+  the `state` field, questions are an object keyed `q<N>`. API key:
+  `apiKey` → `OPENROUTER_API_KEY` env → llm `defaults` (one OpenRouter key
+  serves both tasks). Responses answer at `answers[<qKey>].choice`.
+- **OpenAI** (`builtin: "openai"`; `model` optional, default
+  `gpt-6-luna` — the only model it serves today):
+  `POST {baseUrl:-https://api.openai.com/v1}/decisions`; the diff is the
+  `input` field, questions are an **array** with `name: "q<N>"` and
+  `choices: [{ value, description }]` from the criteria map. API key:
+  `apiKey` → `OPENAI_API_KEY` env → llm `defaults`. Responses answer in
+  the `answers` **array**, matched by `name`; a `refusal` answer (or any
+  answer outside the vocabulary/expected coordinates) skips the line —
+  its rules mark survives. OpenAI caps requests at 400 questions; larger
+  diffs fail per the shared degrade path.
 
 **Shared semantics** — a failed run (non-zero exit, timeout, HTTP error,
 malformed output) falls back to rules marks unless

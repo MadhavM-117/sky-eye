@@ -14,9 +14,10 @@ import {
 import { applyClassifier, classifierRequest, loadClassifierConfig } from "../src/custom-classifier.ts";
 import type { Chapter, ClassifierConfig, Hunk } from "../src/types.ts";
 
-// isolate from the shell: a real OPENROUTER_API_KEY flips key-resolution
-// precedence and makes the "no key" path hit the network
+// isolate from the shell: a real OPENROUTER_API_KEY / OPENAI_API_KEY flips
+// key-resolution precedence and makes the "no key" path hit the network
 delete process.env.OPENROUTER_API_KEY;
+delete process.env.OPENAI_API_KEY;
 
 const withConfig = (body: unknown): string => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dec-"));
@@ -53,6 +54,13 @@ test("loadClassifierConfig: command wins over builtin; the OpenRouter backend ne
   assert.equal(loadClassifierConfig(withConfig({ classifier: { builtin: "other", model: "m" } })), undefined);
 });
 
+test("loadClassifierConfig: openai backend defaults the model to gpt-6-luna", () => {
+  const cfg = loadClassifierConfig(withConfig({ classifier: { builtin: "openai", model: "  " } }))!;
+  assert.equal(cfg.builtin, "openai");
+  assert.equal(cfg.model, "gpt-6-luna");
+  assert.equal(cfg.fallback, true);
+});
+
 test("loadClassifierConfig: decision backend fills defaults, criteria validated", () => {
   const cfg = loadClassifierConfig(withConfig({ classifier: decisionsCfg({ criteria: { skim: "quick", "bad name": "x", empty: "  " } }) }))!;
   assert.equal(cfg.builtin, "openrouter");
@@ -71,6 +79,12 @@ test("resolveApiKey: classifier key > env > llm defaults", () => {
   assert.equal(resolveApiKey(cfg, withConfig({ classifier: decisionsCfg(), defaults: { apiKey: "llm-key" } })), "llm-key");
   const noKey = withConfig({ classifier: decisionsCfg() });
   assert.equal(resolveApiKey(decisionsCfg() as never, noKey), undefined);
+});
+
+test("resolveApiKey: OPENAI_API_KEY env for the openai backend", () => {
+  process.env.OPENAI_API_KEY = "oa-key";
+  assert.equal(resolveApiKey({ builtin: "openai" } as never, withConfig(null)), "oa-key");
+  delete process.env.OPENAI_API_KEY;
 });
 
 // ---- request building -------------------------------------------------------
@@ -107,6 +121,24 @@ test("decisionsRequestBody: default criteria/instructions when not configured", 
   assert.match(q.instructions as string, /Which attention mark/);
 });
 
+test("decisionsRequestBody: openai — input as shared evidence, array questions with choices", () => {
+  const cfg = { builtin: "openai", model: "gpt-6-luna", criteria: { skim: "quick", hotspot: "read fully" } } as never;
+  const { body, keyMap } = decisionsRequestBody(request(), cfg);
+  const parsed = JSON.parse(body) as { model: string; input: string; questions: Array<Record<string, any>> };
+  assert.equal(parsed.model, "gpt-6-luna");
+  assert.match(parsed.input, /src\/auth\.ts \(modified\)/);
+  assert.match(parsed.input, /\+ await checkPassword/);
+  assert.equal(parsed.questions.length, 2);
+  assert.equal(parsed.questions[0].name, "q0");
+  assert.equal(parsed.questions[0].type, "choice");
+  assert.deepEqual(parsed.questions[0].choices, [
+    { value: "skim", description: "quick" },
+    { value: "hotspot", description: "read fully" },
+  ]);
+  assert.match(parsed.questions[1].instructions, /src\/auth\.ts \(new line 2\)/);
+  assert.deepEqual(keyMap.get("q1"), { file: "src/auth.ts", side: "new", line: 2 });
+});
+
 // ---- response parsing --------------------------------------------------------
 
 const expectedOf = (req: string) => {
@@ -133,6 +165,22 @@ test("parseDecisionsResponse: answers → marks; wrong vocabulary and unknown ke
   assert.deepEqual(marks, [
     { file: "src/auth.ts", side: "old", line: 1, mark: "safe", markSource: "custom" },
     { file: "src/auth.ts", side: "new", line: 2, mark: "focus", markSource: "custom" },
+  ]);
+});
+
+test("parseDecisionsResponse: openai array envelope matched by name; refusals skipped", () => {
+  const req = request();
+  const { keyMap } = decisionsRequestBody(req, { builtin: "openai", model: "gpt-6-luna" } as never);
+  const raw = JSON.stringify({
+    answers: [
+      { type: "choice", name: "q0", choice: "safe" },
+      { type: "refusal", name: "q1" }, // no choice — line keeps its rules mark
+      { type: "choice", choice: "focus" }, // missing name — dropped
+    ],
+  });
+  const marks = parseDecisionsResponse(raw, DEFAULT_CRITERIA, expectedOf(req), keyMap);
+  assert.deepEqual(marks, [
+    { file: "src/auth.ts", side: "old", line: 1, mark: "safe", markSource: "custom" },
   ]);
 });
 
@@ -165,6 +213,38 @@ test("decisionsClassify: ok → marks; custom names survive", async () => {
     { file: "src/auth.ts", side: "new", line: 2, mark: "hotspot", markSource: "custom" },
   ]);
   assert.equal(calls.length, 1);
+});
+
+test("decisionsClassify: openai endpoint + bearer auth + array answers", async () => {
+  const cfg = { builtin: "openai", model: "gpt-6-luna", apiKey: "oa-key", criteria: { skim: "quick" } } as never;
+  const req = request();
+  const calls: string[] = [];
+  const fakeFetch = async (url: string, init: RequestInit) => {
+    calls.push(url);
+    assert.equal(new URL(url).host, "api.openai.com");
+    assert.equal(new URL(url).pathname, "/v1/decisions");
+    assert.equal((init.headers as Record<string, string>).authorization, "Bearer oa-key");
+    const sent = JSON.parse(init.body as string);
+    assert.equal(sent.model, "gpt-6-luna");
+    assert.ok(Array.isArray(sent.questions));
+    return new Response(JSON.stringify({
+      answers: [
+        { type: "choice", name: "q0", choice: "skim" },
+        { type: "choice", name: "q1", choice: "skim" },
+      ],
+    }), { status: 200 });
+  };
+  const run = await decisionsClassify(cfg, withConfig(null), req, fakeFetch as typeof fetch);
+  assert.equal(run.failed, false);
+  assert.equal(run.marks.length, 2);
+  assert.deepEqual(run.marks[0], { file: "src/auth.ts", side: "old", line: 1, mark: "skim", markSource: "custom" });
+  assert.equal(calls.length, 1);
+});
+
+test("decisionsClassify: openai missing key names OPENAI_API_KEY", async () => {
+  const run = await decisionsClassify({ builtin: "openai", model: "gpt-6-luna" } as never, withConfig(null), request());
+  assert.equal(run.failed, true);
+  assert.match(run.error!, /OPENAI_API_KEY/);
 });
 
 test("decisionsClassify: HTTP error and missing key degrade to a failed run (no throw)", async () => {

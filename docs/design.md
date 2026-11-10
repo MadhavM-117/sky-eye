@@ -276,8 +276,9 @@ How a chapter summary is produced:
 - **Per-task model/key config**: a config file at `.sky-eye/config.json`
   (inside the ignored state folder, so keys never land in git/jj/docker).
   Tasks (v1: `narrate`, `classify`, `chunk`; the classifier pass (spec §16.5 — exec
-  hook or built-in backends — OpenRouter's decision-model API
-  (src/decisions.ts), model e.g. typesafe/jev-1.14) joins the same
+  hook or built-in backends — decision-model APIs: OpenRouter's
+  (`builtin: "openrouter"`, e.g. typesafe/jev-1.14) or OpenAI's
+  (`builtin: "openai"`, `src/decisions.ts`) join the same
   scheme) fall
   back to shared defaults, per-task entries override:
 

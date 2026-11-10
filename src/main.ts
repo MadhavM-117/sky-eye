@@ -10,7 +10,7 @@ import {
   loadClassifierConfig,
   spawnClassifier,
 } from "./custom-classifier.ts";
-import { DECISIONS_DEFAULT_BASE, decisionsClassify } from "./decisions.ts";
+import { decisionsClassify, decisionsUrl } from "./decisions.ts";
 import { loadSession } from "./store.ts";
 import "./routes.ts";
 
@@ -60,7 +60,7 @@ if (process.argv[2] === "debug-classify") {
   const rulesMarks = session.chapters.reduce((n, c) => n + c.attention.length, 0);
   console.log(
     [
-      `backend:  ${config.command ?? `openrouter:${config.model} @ ${config.baseUrl ?? DECISIONS_DEFAULT_BASE}`}`,
+      `backend:  ${config.command ?? `${config.builtin}:${config.model} @ ${decisionsUrl(config)}`}`,
       `duration: ${run.durationMs}ms, exit: ${run.exitCode}${run.failed ? ` — FAILED: ${run.error}` : ""}`,
       `marks:    ${run.marks.length} custom applied, ${rulesMarks - overridden} rules kept`,
       run.stderr ? `--- stderr ---\n${run.stderr.trimEnd()}` : "",

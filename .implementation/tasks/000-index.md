@@ -38,4 +38,11 @@ below is the current plan.
   (`provider: "claude"` via `@anthropic-ai/sdk` 1.6.0; credential chain
   apiKey → env, authToken → envs for Pro/Max subscriptions; no-credential
   → task skipped; SDK sends Bearer auth, not x-api-key)
+- `025` Built-in classifier backend: OpenAI Decisions API —
+  `classifier.builtin: "openai"` (`POST {baseUrl}/decisions`, model
+  default `gpt-6-luna`), apiKey chain `classifier.apiKey` →
+  `OPENAI_API_KEY` env → llm defaults; same merge/fallback/log/debug
+  semantics as 014; openrouter backend untouched — **done**
+  (`decisionsUrl` vendor dispatch; array answers normalized by `name`;
+  refusals skip the line)
 - `023` File-bar accordion + full-file mode — **done** (`fullFileHunks` padding in the adapter from `/api/file`; whole-bar toggle, de-linked path; unchanged-line comments pinned by remap §13.3.5, visible only in full-file mode; deep links force full-file before scroll+flash)

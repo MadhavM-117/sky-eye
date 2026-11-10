@@ -1,8 +1,8 @@
 // Classifier pass (spec §16.5): runs at every chapter rebuild. Two backends
 // share one merge/fallback/log path — the exec hook (`classifier.command`:
-// JSON request on stdin, sparse marks JSON on stdout) and built-in backends
-// (`classifier.builtin`, first: OpenRouter's decision-model API via
-// src/decisions.ts, model e.g. typesafe/jev-1.14). Marks are
+// JSON request on stdin, sparse marks JSON on stdout) and built-in
+// decision-model backends (`classifier.builtin`: OpenRouter's or OpenAI's
+// decisions API, via src/decisions.ts). Marks are
 // merged per line coordinate over the built-in rules pass — unmarked lines
 // keep their rules marks. A failed run (non-zero exit, timeout, HTTP error,
 // malformed output) keeps rules marks unless `fallback: false`, in which
@@ -32,25 +32,28 @@ export function loadClassifierConfig(root: string): ClassifierConfig | undefined
         debug: c.debug === true,
       };
     }
-    // built-in backends; the OpenRouter backend needs a model — anything else → no pass (rules only)
-    if (c?.builtin === "openrouter" && typeof c.model === "string" && c.model.trim()) {
-      return {
-        builtin: "openrouter",
-        model: c.model,
-        apiKey: typeof c.apiKey === "string" ? c.apiKey : undefined,
-        baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : undefined,
-        instructions: typeof c.instructions === "string" ? c.instructions : undefined,
-        criteria: validCriteria(c.criteria),
-        timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
-        fallback: c.fallback !== false,
-        debug: c.debug === true,
-      };
-    }
+    // built-in backends — openrouter needs a model; openai defaults to
+    // gpt-6-luna (the only model its Decisions API serves today)
+    if (c?.builtin === "openrouter" && typeof c.model === "string" && c.model.trim())
+      return { builtin: "openrouter", model: c.model, ...sharedBuiltin(c) };
+    if (c?.builtin === "openai")
+      return { builtin: "openai", model: (typeof c.model === "string" && c.model.trim()) || "gpt-6-luna", ...sharedBuiltin(c) };
     return undefined;
   } catch {
     return undefined;
   }
 }
+
+// fields every built-in backend shares (model is per-backend above)
+const sharedBuiltin = (c: Record<string, unknown>) => ({
+  apiKey: typeof c.apiKey === "string" ? c.apiKey : undefined,
+  baseUrl: typeof c.baseUrl === "string" ? c.baseUrl : undefined,
+  instructions: typeof c.instructions === "string" ? c.instructions : undefined,
+  criteria: validCriteria(c.criteria),
+  timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
+  fallback: c.fallback !== false,
+  debug: c.debug === true,
+});
 
 // mark NAME → criteria description; keys must be valid mark names (same
 // regex the exec protocol enforces) with non-empty descriptions — invalid
@@ -252,7 +255,7 @@ function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): v
       JSON.stringify(
         {
           time: new Date().toISOString(),
-          command: config.command ?? `openrouter:${config.model}`, // backend label
+          command: config.command ?? `${config.builtin}:${config.model}`, // backend label
           durationMs: run.durationMs,
           exitCode: run.exitCode,
           failed: run.failed,
@@ -273,7 +276,7 @@ function writeLog(root: string, config: ClassifierConfig, run: ClassifierRun): v
 
 // Mutates the freshly-built chapters' attention in place per the merge
 // semantics. No-op without config; rules marks are the fallback layer.
-// Backend selection: exec hook (`command`) wins, else built-in (OpenRouter).
+// Backend selection: exec hook (`command`) wins, else built-in decision API.
 export async function applyClassifier(
   root: string,
   base: string,
