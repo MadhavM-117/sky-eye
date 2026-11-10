@@ -41,6 +41,9 @@ config, logs) — never in the sky-eye install.
 
 ## Configuration
 
+A ready-to-copy sample with all AI features enabled lives at
+[`docs/config.sample.jsonc`](docs/config.sample.jsonc).
+
 All config lives in `<repo>/.sky-eye/config.json` (inside the ignored
 folder — keys never land in git/jj). Missing file or missing keys never
 block anything: LLM-powered features are simply skipped and you get the
