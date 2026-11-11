@@ -183,6 +183,19 @@ Everything else (`instructions`, `criteria`, `timeoutMs`, `fallback`,
 - **classifier** — a second per-line pass that can override rule marks
   (never narrative/LLM marks).
 
+### Checking your config
+
+```sh
+sky-eye check-config
+```
+
+Pings every configured LLM task (tasks sharing one adapter are pinged
+once) and sends a synthetic one-line request through the classifier
+backend; `classifyRules` / `review` are reported as parsed. Missing parts
+show as *skipped* — matching runtime behavior; a configured part that
+fails (bad key, dead endpoint, missing credentials) exits non-zero.
+Read-only: writes nothing.
+
 ## Development
 
 ```sh

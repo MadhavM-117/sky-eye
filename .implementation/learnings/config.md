@@ -20,3 +20,7 @@
   match the provider name so the shared-call check (§16.3) reads clearly.
   Gotcha: `@anthropic-ai/sdk` ≥1.6 sends API keys as `authorization: Bearer`,
   not `x-api-key`; auth headers only appear in the injected fetch's `init`.
+- `resolveTask` must thread `fetchImpl` into *every* fetch adapter — it was
+  silently dropped for openai/anthropic (first hit by task 026's
+  `check-config`, which is the only caller that injects through
+  `resolveTask`). Existing tests inject at the adapter factories directly.

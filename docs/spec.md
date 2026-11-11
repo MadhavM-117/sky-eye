@@ -609,6 +609,15 @@ buckets — §16.4). Missing file or
 missing key for a task → **task skipped, never blocks the session**
 (narrative = "unanalyzed", marks = rules only).
 
+`sky-eye check-config` probes the config end-to-end: each configured LLM
+task resolves through the runtime path (`resolveTask`) and answers a
+one-shot ping — shared adapters (§16.3) pinged once; a configured `claude`
+task without credentials reports as failed, not skipped — the classifier
+backend (exec hook or decision API) runs against a synthetic one-added-line
+request, and the static keys (`classifyRules`, `review`) are reported as
+parsed. Exit code non-zero when any configured part failed; nothing is
+written (no sessions, no classifier logs).
+
 ### 16.2 Narrative generation — eager, at build time
 
 - **Every chapter is analysed before the session is shown.** The generation

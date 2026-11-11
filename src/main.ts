@@ -4,6 +4,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { upsertIgnoreFile } from "./ignore.ts";
+import { checkConfig } from "./check-config.ts";
 import { serve } from "./server.ts";
 import {
   classifierRequest,
@@ -70,6 +71,23 @@ if (process.argv[2] === "debug-classify") {
       .filter(Boolean)
       .join("\n"),
   );
+  process.exit(0);
+}
+
+// `sky-eye check-config`: live probe of every configured part of
+// .sky-eye/config.json — LLM task pings, classifier backend round-trip,
+// static keys as parsed (spec §16.1). Read-only: runs before ignore upkeep.
+if (process.argv[2] === "check-config") {
+  const results = await checkConfig(root);
+  for (const r of results) {
+    const name = (r.name + " ".repeat(16)).slice(0, 16);
+    console.log(`${name}${r.status.padEnd(5)} ${r.detail}`);
+  }
+  const failed = results.filter((r) => r.status === "fail").length;
+  if (failed) {
+    console.error(`sky-eye: ${failed} configured part${failed > 1 ? "s" : ""} failed`);
+    process.exit(1);
+  }
   process.exit(0);
 }
 

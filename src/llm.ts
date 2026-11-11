@@ -22,8 +22,9 @@ export function loadLlmConfig(root: string): LlmConfig | undefined {
   }
 }
 
-// defaults ← task override merge; `command` wins over provider
-function resolveTaskConfig(config: LlmConfig | undefined, task: "narrate" | "classify" | "chunk"): LlmTaskConfig | undefined {
+// defaults ← task override merge; `command` wins over provider.
+// Exported for check-config's configured-but-unresolvable diagnostic.
+export function resolveTaskConfig(config: LlmConfig | undefined, task: "narrate" | "classify" | "chunk"): LlmTaskConfig | undefined {
   const merged: LlmTaskConfig = { ...config?.defaults, ...config?.tasks?.[task] };
   if (merged.command?.trim()) return { ...merged, command: merged.command.trim() };
   if (merged.model?.trim()) return { ...merged, model: merged.model.trim() };
@@ -157,7 +158,7 @@ export function resolveTask(root: string, task: "narrate" | "classify" | "chunk"
   const cfg = resolveTaskConfig(loadLlmConfig(root), task);
   if (!cfg) return undefined;
   if (cfg.command) return customAdapter(cfg, root);
-  if (cfg.provider === "anthropic") return anthropicAdapter(cfg);
+  if (cfg.provider === "anthropic") return anthropicAdapter(cfg, fetchImpl);
   if (cfg.provider === "claude") {
     const apiKey = cfg.apiKey?.trim() || process.env.ANTHROPIC_API_KEY;
     const authToken = cfg.authToken?.trim() || process.env.ANTHROPIC_AUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN;
@@ -167,5 +168,5 @@ export function resolveTask(root: string, task: "narrate" | "classify" | "chunk"
     }
     return claudeSdkAdapter(cfg, fetchImpl);
   }
-  return openaiAdapter(cfg);
+  return openaiAdapter(cfg, fetchImpl);
 }
