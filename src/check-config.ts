@@ -67,12 +67,12 @@ export async function checkConfig(root: string, fetchImpl = fetch): Promise<Chec
     }
     const adapter = resolveTask(root, task, fetchImpl);
     if (!adapter) {
-      // only reachable path: claude provider without any credential
+      // only reachable path: an unknown provider value (e.g. configs left on
+      // task 024's removed "claude") — resolveTask already console.error'd the reason
       results.push({
         name: task,
         status: "fail",
-        detail:
-          "claude provider configured but no credentials — task skips at runtime (set apiKey or ANTHROPIC_API_KEY, or authToken / ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN)",
+        detail: `unresolved adapter — ${cfg.provider ? `unknown provider "${cfg.provider}"` : "no model"}`,
       });
       continue;
     }

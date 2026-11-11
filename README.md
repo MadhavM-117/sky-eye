@@ -86,9 +86,9 @@ Per task (`defaults` merged with `tasks.<name>`):
 
 | Option      | Meaning                                                          | Default                     |
 | ----------- | ---------------------------------------------------------------- | --------------------------- |
-| `provider`  | `openai` (OpenAI-compatible), `anthropic` (native Messages API), or `claude` (official `@anthropic-ai/sdk` — supports Claude subscription OAuth tokens and automatic retries) | `openai`                    |
+| `provider`  | `openai` (OpenAI-compatible), `anthropic` (native Messages API), or `claude-code` (runs each task through the `claude` CLI in print mode — uses your Claude subscription via `claude auth login`, no tokens in config) | `openai`                    |
 | `apiKey`    | API key sent with the request                                    | —                           |
-| `authToken` | `claude` only: OAuth token for Claude subscriptions (Pro/Max); falls back to env `ANTHROPIC_AUTH_TOKEN` / `CLAUDE_CODE_OAUTH_TOKEN` | —                           |
+| `claudePath` | `claude-code` only: absolute path to the `claude` binary        | `claude` on `PATH`          |
 | `model`     | Model name. **A task with no `model` is skipped.**               | —                           |
 | `baseUrl`   | API base URL                                                     | `https://api.openai.com/v1` (openai) / `https://api.anthropic.com` (anthropic) |
 | `command`   | Custom exec adapter instead of an API: shell command, request JSON on stdin, expects `{ "text": "..." }` on stdout. Wins over `provider`. | —      |
@@ -134,26 +134,30 @@ Uses Anthropic's native `/v1/messages` endpoint:
 
 No `baseUrl` needed for the public API; set it only for a proxy/gateway.
 
-### Claude (SDK — subscriptions supported)
+### Claude subscription (`claude-code` provider)
 
-The `claude` provider uses the official `@anthropic-ai/sdk` client, so a
-Claude **subscription** (Pro/Max) works too, not just API keys:
+The `claude-code` provider runs each LLM task through the `claude` CLI in
+print mode, so Claude **subscriptions** (Pro/Max) work via your existing
+Claude Code login — no tokens in config, no expiry, refresh and rate-limit
+handling done by the CLI:
 
 ```jsonc
 {
   "defaults": {
-    "provider": "claude",
+    "provider": "claude-code",
     "model": "claude-sonnet-4-5"
   }
 }
 ```
 
-Credentials resolve in order: config `apiKey` → env `ANTHROPIC_API_KEY`,
-then config `authToken` → env `ANTHROPIC_AUTH_TOKEN` →
-`CLAUDE_CODE_OAUTH_TOKEN` (the same OAuth token Claude Code uses for
-subscription auth). With no credential the task is skipped, like any other
-unconfigured task. API-key auth and subscription auth are mutually
-exclusive; a key wins if both are set.
+Requires the `claude` binary on `PATH` (or `claudePath` in the task config)
+and a one-time `claude auth login`. API-key users and gateways should use
+`provider: "anthropic"` instead.
+
+**Migration:** `provider: "claude"` (the `@anthropic-ai/sdk` client, removed)
+no longer exists — switch to `claude-code` for subscriptions or `anthropic`
+for API keys. The `authToken` key and the `ANTHROPIC_AUTH_TOKEN` /
+`CLAUDE_CODE_OAUTH_TOKEN` env vars were only read by it and are gone;
 
 ### Built-in classifier via OpenRouter's decision API
 

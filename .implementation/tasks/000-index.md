@@ -46,3 +46,9 @@ below is the current plan.
   (`decisionsUrl` vendor dispatch; array answers normalized by `name`;
   refusals skip the line)
 - `023` File-bar accordion + full-file mode — **done** (`fullFileHunks` padding in the adapter from `/api/file`; whole-bar toggle, de-linked path; unchanged-line comments pinned by remap §13.3.5, visible only in full-file mode; deep links force full-file before scroll+flash)
+- `027` Claude subscriptions via the `claude` CLI — `provider: "claude-code"`
+  shells out to `claude -p` (auth delegated to Claude Code's login: no tokens
+  in config, CLI owns OAuth refresh + rate limits); **removes** task 024's
+  `claude` provider, the `authToken` key and `@anthropic-ai/sdk` — runtime
+  deps zero again; unknown provider values fail loudly (spec §2/§16.1/§22.2)
+  — **done**

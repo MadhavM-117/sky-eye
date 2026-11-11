@@ -24,3 +24,16 @@
   silently dropped for openai/anthropic (first hit by task 026's
   `check-config`, which is the only caller that injects through
   `resolveTask`). Existing tests inject at the adapter factories directly.
+- Provider replacement (task 027): `claude-code` shells out to `claude -p` —
+  `--system-prompt` replaces CC's default prompt (right for one-shot, no
+  session sync), `--output-format json` gives `{ result, is_error }`,
+  `--no-session-persistence` stops transcript litter in `~/.claude/projects`.
+  Failure = thrown `Error` with the CLI's own text → §16.1 degradation.
+- Removing a provider (024's `claude`): delete it from the union, delete the
+  key only it used (`authToken`), and add an explicit unknown-provider guard
+  in `resolveTask` — the old code fell through to `openaiAdapter`, which would
+  silently route stale configs to OpenAI. Same guard is what `check-config`
+  reports as `fail`.
+- Parent-session env strip for spawned `claude` children copied verbatim from
+  pi-claude-bridge (`PARENT_SESSION_VARS` in its `cc-child.ts`) — two repos
+  now own that list; update both together.

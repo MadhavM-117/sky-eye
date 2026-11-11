@@ -38,10 +38,10 @@ The docs left several "or" choices (D§2). Resolved here:
 | Distribution | npm package with a `bin` entry (`sky-eye`), run inside any repo; server resolves the repo from `process.cwd()` | D/U§1.1: "user runs `sky-eye` inside a repository". |
 
 Dependency policy (v1 revision): **server runtime dependencies stay zero**
-(`node:http`, `node:test`, CLIs, `fetch` — all unchanged) **except
-`@anthropic-ai/sdk`** (task 024), added deliberately so the `claude`
-provider can offer subscription/OAuth auth and retries that raw `fetch`
-can't. **Frontend runtime
+(`node:http`, `node:test`, CLIs, `fetch` — all unchanged). The one-time
+exception for `@anthropic-ai/sdk` (task 024) was removed by task 027 along
+with the `claude` provider it served — subscription auth now shells out to
+the `claude` CLI with no dependency at all. **Frontend runtime
 dependencies allowed**, pinned exact: `@pierre/diffs`, `@pierre/trees`, and
 their transitive set (`shiki`, `diff`, `lru_map`, `hast-util-to-html`,
 `@pierre/highlights`, `@pierre/theme`/`@pierre/theming`). Dev dependencies:
@@ -591,10 +591,11 @@ during step 4. This is the D§11 risk, accepted.
 `.sky-eye/config.json` (inside the ignored folder — keys never land in
 git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
 `narrate` / `classify` / `chunk` (`apiKey`, `model`, `baseUrl`, `provider`, plus
-`authToken` for the claude provider (§22.2: `@anthropic-ai/sdk` —
-credentials resolve `apiKey` → `ANTHROPIC_API_KEY`, then `authToken` →
-`ANTHROPIC_AUTH_TOKEN` → `CLAUDE_CODE_OAUTH_TOKEN` for Claude
-subscriptions; no credential → task skipped) and
+`claudePath` for the claude-code provider (§22.2: the `claude` CLI run in
+print mode — auth delegated entirely to Claude Code's own login, so
+subscriptions work with no tokens in config; requires the CLI installed and
+logged in; unknown provider values — including task 024's removed `claude` —
+skip the task with an error, never silently rerouted) and
 `command` / `timeoutMs` for the custom adapter — §22.2); plus `classifier`
 (classifier pass: `command` (exec hook), or built-in backends — `builtin:
 "openrouter"` + `model` (e.g. typesafe/jev-1.14) via OpenRouter, or
@@ -611,8 +612,9 @@ missing key for a task → **task skipped, never blocks the session**
 
 `sky-eye check-config` probes the config end-to-end: each configured LLM
 task resolves through the runtime path (`resolveTask`) and answers a
-one-shot ping — shared adapters (§16.3) pinged once; a configured `claude`
-task without credentials reports as failed, not skipped — the classifier
+one-shot ping — shared adapters (§16.3) pinged once; an unknown provider
+value (e.g. configs left on task 024's removed `claude`) reports as failed,
+not skipped — the classifier
 backend (exec hook or decision API) runs against a synthetic one-added-line
 request, and the static keys (`classifyRules`, `review`) are reported as
 parsed. Exit code non-zero when any configured part failed; nothing is
@@ -1007,7 +1009,11 @@ milestone starts:
    stdout — same spirit as the classifier hook §16.5). Amended (task 024):
    a fourth — the official `@anthropic-ai/sdk` client (selected via
    `provider: "claude"`), the only one supporting Claude subscription
-   (Pro/Max) OAuth tokens. Requests are
+   (Pro/Max) OAuth tokens. Amended again (task 027): the SDK adapter is
+   **removed** (breaking change) and a fifth mechanism ships — shelling out
+   to the `claude` CLI in print mode (`provider: "claude-code"`), the only
+   one supporting Claude subscriptions without the user copying an OAuth
+   token. Requests are
    **blocking** in v1 (one paragraph, seconds); streaming is deferred to a
    future task — revisit if slow models annoy.
 3. **Chapter-id instability on every diff change.** Any diff change (not

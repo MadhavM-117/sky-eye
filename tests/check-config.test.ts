@@ -63,21 +63,13 @@ test("openai provider pings once; classify shares the adapter; static overrides 
   assert.equal(byName.get("classifyRules")!.detail, "1 safe / 1 focus globs");
 });
 
-test("claude provider without credentials fails with the env-var pointers", async () => {
-  const vars = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
-  const saved = vars.map((v) => [v, process.env[v]] as const);
-  for (const v of vars) delete process.env[v];
-  try {
-    const results = await checkConfig(
-      withConfig({ defaults: { provider: "claude", model: "claude-haiku-5-5" } }),
-    );
-    const narrate = results.find((r) => r.name === "narrate")!;
-    assert.equal(narrate.status, "fail");
-    assert.match(narrate.detail, /no credentials/);
-    assert.match(narrate.detail, /CLAUDE_CODE_OAUTH_TOKEN/);
-  } finally {
-    for (const [v, value] of saved) if (value !== undefined) process.env[v] = value;
-  }
+test("unknown (removed) provider fails with a named error, not a silent mis-route", async () => {
+  const results = await checkConfig(
+    withConfig({ defaults: { provider: "claude", model: "claude-haiku-5-5" } }),
+  );
+  const narrate = results.find((r) => r.name === "narrate")!;
+  assert.equal(narrate.status, "fail");
+  assert.match(narrate.detail, /unknown provider "claude"/);
 });
 
 test("classifier exec hook round-trips the synthetic request", async () => {

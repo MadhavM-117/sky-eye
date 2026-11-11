@@ -65,13 +65,13 @@ export interface ClassifyRules {
 // LLM task config (spec §16.1, §22.2): `defaults` in .sky-eye/config.json
 // plus per-task overrides for narrate/classify. `command` switches to the
 // custom exec adapter; otherwise `provider` picks openai (default),
-// anthropic (raw Messages API), or claude (@anthropic-ai/sdk —
-// subscription/OAuth auth supported). A task without model/command resolves
-// to undefined = skipped.
+// anthropic (raw Messages API), or claude-code (the `claude` CLI —
+// subscription auth delegated to Claude Code). A task without model/command
+// resolves to undefined = skipped.
 export interface LlmTaskConfig {
-  provider?: "openai" | "anthropic" | "claude";
+  provider?: "openai" | "anthropic" | "claude-code";
   apiKey?: string;
-  authToken?: string; // claude adapter: OAuth token (subscriptions); falls back to ANTHROPIC_AUTH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN
+  claudePath?: string; // claude-code adapter: absolute path to the claude binary (default: "claude" on PATH)
   model?: string;
   baseUrl?: string;
   command?: string; // custom adapter: JSON on stdin, { text } on stdout

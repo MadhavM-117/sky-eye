@@ -7,18 +7,16 @@
 //   chunk    — semantic chapter grouping (titles + reading order)
 //   classifier — separate per-line decision pass (OpenAI Decisions API)
 //
-// Credentials: the claude provider reads the subscription OAuth token from
-// the CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_AUTH_TOKEN env var (or paste it
-// as "authToken" below); the classifier reads OPENAI_API_KEY from the env
-// (or set "apiKey" below). Missing credentials → that task is skipped,
-// never a hard failure.
+// Credentials: the claude-code provider runs each task through the `claude`
+// CLI (subscription auth — run `claude auth login` once, keep the binary on
+// PATH); the classifier reads OPENAI_API_KEY from the env (or set "apiKey"
+// below). Missing credentials → that task is skipped, never a hard failure.
 {
   "defaults": {
-    "provider": "claude",
+    "provider": "claude-code",
     // Claude subscription — check the exact model id your plan offers,
     // e.g. fall back to "claude-haiku-4-5" if 5.5 isn't listed yet.
     "model": "claude-haiku-5-5"
-    // "authToken": "..." // optional: hardcode instead of the env var
   },
 
   "classifier": {

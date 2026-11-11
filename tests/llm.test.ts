@@ -6,7 +6,7 @@ import path from "node:path";
 import {
   CustomAdapterError,
   anthropicAdapter,
-  claudeSdkAdapter,
+  claudeCodeAdapter,
   customAdapter,
   loadLlmConfig,
   openaiAdapter,
@@ -161,82 +161,59 @@ test("http adapters throw on non-2xx (caller degrades)", async () => {
   );
 });
 
-test("resolveTask: claude provider selects the sdk adapter; no credentials → skipped", () => {
+test("resolveTask: claude-code provider selects the cli adapter", () => {
   const root = withConfig({
-    tasks: { narrate: { provider: "claude", apiKey: "k", model: "claude-x" } },
+    tasks: { narrate: { provider: "claude-code", model: "claude-haiku-4-5" } },
   });
-  const adapter = resolveTask(root, "narrate");
-  assert.ok(adapter);
-  assert.match(adapter!.id, /^claude:https:\/\/api.anthropic.com:claude-x$/);
-
-  // no apiKey/authToken anywhere → task skipped (§16.1); save/restore env
-  const saved = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"]
-    .map((k) => [k, process.env[k]] as const);
-  for (const [k] of saved) delete process.env[k];
-  try {
-    const none = withConfig({ tasks: { narrate: { provider: "claude", model: "claude-x" } } });
-    assert.equal(resolveTask(none, "narrate"), undefined);
-    // subscription path: OAuth token via env alone
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = "oauth-tok";
-    assert.ok(resolveTask(none, "narrate"));
-  } finally {
-    for (const [k, v] of saved) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  }
+  assert.match(resolveTask(root, "narrate")!.id, /^claude-code:claude-haiku-4-5$/);
 });
 
-// the sdk accepts an injected fetch (same stub surface as the fetch adapters);
-// headers are read through Headers because the sdk builds them itself
-const sdkStub = (status: number, body: unknown) => {
-  let url = "";
-  let captured: RequestInit | undefined;
-  const fetchImpl = (async (u: string | URL, init?: RequestInit) => {
-    url = String(u);
-    captured = init;
-    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-  }) as unknown as typeof fetch;
-  return {
-    fetchImpl,
-    url: () => url,
-    header: (name: string) => new Headers(captured?.headers as HeadersInit).get(name),
-    body: () => {
-      const raw = captured?.body;
-      return JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
-    },
-  };
+test("resolveTask: removed 'claude' provider is unknown — task skipped, not silently openai", () => {
+  const root = withConfig({
+    tasks: { narrate: { provider: "claude", model: "claude-haiku-4-5", apiKey: "x" } },
+  });
+  assert.equal(resolveTask(root, "narrate"), undefined);
+});
+
+// fake `claude` binary: the adapter's spawn boundary, so no fetch stub
+const claudeFake = (stdout: string, code = 0) => (dir: string) => {
+  const bin = path.join(dir, "claude");
+  fs.writeFileSync(
+    bin,
+    `#!/bin/sh\ncat > /dev/null\nprintf '%s' '${stdout.replace(/'/g, "'\\''")}'\nexit ${code}`,
+  );
+  fs.chmodSync(bin, 0o755);
+  return bin;
 };
 
-test("claude sdk adapter: messages request shape, apiKey → x-api-key, text extracted", async () => {
-  const s = sdkStub(200, { content: [{ type: "text", text: "para" }] });
-  const cfg: LlmTaskConfig = { provider: "claude", apiKey: "k", model: "claude-x" };
-  const text = await claudeSdkAdapter(cfg, s.fetchImpl).call({ task: "narrate", system: "sys", prompt: "usr" });
-  assert.equal(text, "para");
-  assert.equal(s.url(), "https://api.anthropic.com/v1/messages");
-  const body = s.body();
-  assert.equal(body.model, "claude-x");
-  assert.equal(body.max_tokens, 1024);
-  assert.equal(body.system, "sys");
-  assert.deepEqual(body.messages, [{ role: "user", content: "usr" }]);
-  // sdk 1.6 sends the key as authorization: Bearer (no x-api-key anymore)
-  assert.equal(s.header("authorization"), "Bearer k");
+test("claude-code adapter: parses the json result", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llmc-"));
+  const bin = claudeFake('{"result":"hello from claude","is_error":false}')(dir);
+  const text = await claudeCodeAdapter({ provider: "claude-code", model: "claude-haiku-4-5", claudePath: bin }, dir)
+    .call({ task: "narrate", system: "sys", prompt: "usr" });
+  assert.equal(text, "hello from claude");
 });
 
-test("claude sdk adapter: authToken (subscriptions) → Bearer; empty text → empty string", async () => {
-  const s = sdkStub(200, { content: [{ type: "tool_use", id: "x" }] });
-  const cfg: LlmTaskConfig = { provider: "claude", authToken: "oauth-tok", model: "claude-x" };
-  const text = await claudeSdkAdapter(cfg, s.fetchImpl).call({ task: "narrate", system: "s", prompt: "p" });
-  assert.equal(text, "");
-  assert.equal(s.header("authorization"), "Bearer oauth-tok");
-});
-
-test("claude sdk adapter: errors propagate (caller degrades)", async () => {
-  const s = sdkStub(401, { error: { message: "bad key" } });
+test("claude-code adapter: quota errors throw with the CLI's text (caller degrades)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llmc-"));
+  const bin = claudeFake('{"result":"You\'ve hit your usage limit…","is_error":true,"subtype":"error_during_execution"}')(dir);
   await assert.rejects(
-    claudeSdkAdapter({ provider: "claude", apiKey: "k", model: "m" }, s.fetchImpl)
+    claudeCodeAdapter({ provider: "claude-code", model: "m", claudePath: bin }, dir)
       .call({ task: "narrate", system: "", prompt: "" }),
+    /usage limit/,
   );
+});
+
+test("claude-code adapter: non-json output and spawn failure throw with stderr tail", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "llmc-"));
+  const bin = claudeFake("plain text, not json", 1)(dir);
+  await assert.rejects(
+    claudeCodeAdapter({ provider: "claude-code", model: "m", claudePath: bin }, dir)
+      .call({ task: "narrate", system: "", prompt: "" }),
+    /exit 1/,
+  );
+  const missing = claudeCodeAdapter({ provider: "claude-code", model: "m", claudePath: path.join(dir, "absent") }, dir);
+  await assert.rejects(missing.call({ task: "narrate", system: "", prompt: "" }), /absent|ENOENT|exit null/);
 });
 
 test("custom adapter: exec speaks stdin/stdout JSON", async () => {

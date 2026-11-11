@@ -13,3 +13,5 @@ then `authToken` → `ANTHROPIC_AUTH_TOKEN` → `CLAUDE_CODE_OAUTH_TOKEN`
 keys as `authorization: Bearer` (no `x-api-key` since 1.6) — tests pin
 actual header behavior. Spec §2 (dependency policy exception), §16.1,
 §22.2 and README updated.
+
+**Superseded by 027** — provider removed; use `claude-code`.
