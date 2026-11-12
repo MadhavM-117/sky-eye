@@ -220,11 +220,12 @@ function markGlyph(mark) {
   node.className = cls ? `sky-mark-glyph sky-mark-${cls}` : "sky-mark-glyph";
   node.textContent = glyph;
   node.title = title;
-  // top-aligned (not vertically centered): wrapped/annotation rows grow the
-  // cell — the glyph must stay next to its line number on the first row
+  // top-anchored, no manual pixel offset: the span inherits the cell's
+  // line-height (pierre default 13px/20px), so the glyph centers on the
+  // first line box exactly where the line number sits — and stays there
+  // when wrapped/annotation rows grow the cell
   node.style.cssText =
-    "position:absolute;left:6px;top:0;display:flex;align-items:flex-start;padding-top:3px;" +
-    `color:${color};font-weight:600;`;
+    "position:absolute;left:6px;top:0;" + `color:${color};font-weight:600;`;
   return node;
 }
 

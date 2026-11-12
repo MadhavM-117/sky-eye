@@ -301,6 +301,14 @@ None. No new packages, no migrations, no config keys.
 - [x] jj commit (conventional message) — `feat(ui): full-width layout, header change summary, wrap toggle` (ryuuntpy)
 - [x] Learnings entry (pierre wrap disables annotations) — `.implementation/learnings/pierre-diffs.md` + index
 
+### Follow-up fixes (user feedback, same task)
+- [x] Mark glyphs top-aligned (`pierre-adapter.js` `markGlyph`): absolute
+  `top:0` instead of `inset-block:0` + centering, so a wrapped/annotation
+  row's tall cell keeps the glyph beside the line number.
+- [x] Header summary colorized: `.add`/`.del` color rules made global in
+  `style.css` (were scoped to `.stats`/`.rail-meta`; the header's `.meta`
+  span was invisible-colored). Committed separately as `swpunkzo`.
+
 ### Deviations from the plan
 - Toggle handler re-labels the button **in place** instead of re-running
   `renderSession`: the plan's fallback option. `renderSession` mid-session
