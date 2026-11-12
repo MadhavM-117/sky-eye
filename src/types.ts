@@ -31,12 +31,15 @@ export interface FileDiff {
 // Unknown names render as a neutral chip (frontend).
 export type MarkName = "focus" | "glance" | "safe" | (string & {});
 
+// shared mark-name rule (narrate LLM pass, agent review loop §16a)
+export const MARK_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
 export type LineMark = {
   file: string; // multi-file chapters: marks are per file slice (spec §9.3)
   side: "old" | "new";
   line: number;
   mark: MarkName;
-  markSource: "rules" | "llm" | "custom";
+  markSource: "rules" | "llm" | "custom" | "agent";
 };
 
 // classifier pass (spec §16.5) — .sky-eye/config.json → `classifier`.
@@ -140,6 +143,7 @@ export interface Chapter {
   narrativeEdited?: boolean;
   title?: string; // one-line semantic description from the chunk task (§8a)
   attention: LineMark[];
+  marksEdited?: boolean; // agent marks present (§16a) — joins the needsConfirm gate
   viewedFiles?: string[]; // slice paths marked viewed (spec §9.3); absent = nothing viewed
 }
 
@@ -160,6 +164,9 @@ export interface Session {
   chapters: Chapter[];
   comments: Comment[];
   supersededBy?: string;
+  // agent review loop (§16a): snapshot of open comments at submit time —
+  // copies, not references; loop state, never merged on import (§14)
+  review?: { submittedAt: number; comments: Comment[] };
 }
 
 export interface Refs {

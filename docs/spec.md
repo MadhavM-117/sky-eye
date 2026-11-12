@@ -104,7 +104,9 @@ sky-eye/
 2. Repo kind: `.jj` present → `jj` (jj wins for colocated), else `git`.
 3. Ignore-file upkeep (§6 below).
 4. Bind preferred port **4800** on **`127.0.0.1`** (`server.listen(port, "127.0.0.1")`);
-   on `EADDRINUSE` scan upward through user-space ports (>1024) until one binds.
+   on `EADDRINUSE` scan upward to **4899** until one binds (task 030: the
+   agent review loop's server probe scans the same exported range — probe
+   and server must not drift).
 5. Print exactly: `sky-eye serving <repo-root> (<kind> repo) → http://localhost:<port>`
 6. Open browser (`xdg-open`, macOS `open`) at the bound URL; failure to open
    is a warning, not an error.
@@ -391,16 +393,24 @@ As D§4 (`Session`, `Chapter`, `Comment`, `Anchor`), with these concrete fields:
   no auto-derivation from chapters (revisit if wanted).
 - `Chapter.attention: LineMark[]` — `LineMark { file: string, side:
   "old"|"new", line: number, mark: "focus"|"glance"|"safe", markSource:
-  "rules"|"llm"|"custom" }` (`file` required: a multi-file chapter's line
+  "rules"|"llm"|"custom"|"agent" }` (`file` required: a multi-file chapter's line
   numbers are per-slice; `mark` uses the canonical vocabulary but is
-  extensible — custom classifiers (§16.5) may emit other names, rendered as
+  extensible — custom classifiers (§16.5) and the agent review loop (§16a)
+  may emit other names, rendered as
   a neutral glyph: the name's initial in the muted color (readable, no
   canonical semantics; a bare dot was invisible in dark mode — task 013). Rules
   pass fills marks at session creation; the classifier pass (§16.5 — exec
   hook or built-in backend) overrides marks per line with
   `markSource: "custom"`; LLM pass may
-  overwrite `markSource: "rules"` marks without confirmation (only human
-  data is protected; marks are always machine-owned).
+  overwrite `markSource: "rules"` marks without confirmation; agent marks
+  (§16a) **append** with `markSource: "agent"` — nothing is replaced.
+  A chapter with agent marks carries `marksEdited: true` and joins the same
+  confirm gate as an edited narrative (§16a).
+- `Session.review?: { submittedAt: number, comments: Comment[] }` — the
+  agent-review-loop state (§16a): a snapshot of all non-resolved comments,
+  field-copied at submit time (later edits to live comments never mutate the
+  snapshot). Loop state, not user state: never merged on import (§14) and
+  cleared by `PATCH { review: null }` when a new review round starts.
 - `Comment`: includes both `createdAt: number` and `updatedAt: number` (set to
   `createdAt` on creation and bumped on every `PATCH`), plus `orphaned?: boolean`.
 
@@ -422,13 +432,13 @@ All bodies JSON unless noted. All non-GET require `X-Sky-Eye: 1`.
 | `GET /api/refs` | — | §5 |
 | `GET /api/tree?ref=&dir=[&recursive=1]` | — | `[{ name, type: "dir"|"file", path }]`; `dir` defaults to root; with `recursive=1` returns every *file* path at `ref`, flat (dirs derived by the client tree) — feeds the explorer's whole-repo `FileTree`, whose search needs the full path list; read from VCS object store at `ref`, repo-relative, contained (§11) |
 | `GET /api/file?ref=&path=&side=` | — | `{ content, binary }`; read from VCS object store at `ref` (`side` selects base/head ref of the open session or a plain ref, §11) |
-| `POST /api/sessions` | `{ base, head, baseLabel?, headLabel? }` | Resolves `base` and `head` to canonical stable IDs (§5/§9.1). If a session with `<base>..<head>` exists → **200 with the existing session** (no duplicate, U§1.5); else create: build diff, chunk, run the full analysis pipeline (rules marks → classifier → narrative/LLM marks → ordering, §16.2/§16.6/§16.7), persist → `201` + `Session` |
+| `POST /api/sessions` | `{ base, head, baseLabel?, headLabel?, analysis?: "full"\|"skip" }` | Resolves `base` and `head` to canonical stable IDs (§5/§9.1). If a session with `<base>..<head>` exists → **200 with the existing session** (no duplicate, U§1.5); else create: build diff, chunk, run the full analysis pipeline (rules marks → classifier → narrative/LLM marks → ordering, §16.2/§16.6/§16.7), persist → `201` + `Session`. `analysis: "skip"` (agent review loop, §16a) stops after rules marks — no classifier, narrative or ordering pass |
 | `POST /api/comments` | `{ sessionId, chapterId, file, side, line, text, priority? }` | `201` + `Comment`; server captures `anchor` from the session diff/VCS file (§12) |
-| `PATCH /api/sessions/:id` | `{ label?, reviewed?, narrative?: { chapterId, text }, viewedFiles?: { chapterId, files: string[] }, lastWriteAt }` | updated `Session`; when `narrative` is present, saves the chapter's `narrative` and sets `narrativeEdited: true`; when `viewedFiles` is present, replaces that chapter's `viewedFiles` (unknown chapterId → 404; paths intersected with the chapter's slices — the client sends the full toggle list, computed per ux §3.2) |
+| `PATCH /api/sessions/:id` | `{ label?, reviewed?, narrative?: { chapterId, text }, narratives?: [{ chapterId, text }], marks?: [{ chapterId, marks: [{ file, side, line, mark }] }], viewedFiles?: { chapterId, files: string[] }, submitReview?: true, review?: null, lastWriteAt }` | updated `Session`; `narrative` (frontend, singular) / `narratives` (CLI, plural) save chapter narratives and set `narrativeEdited: true`; `marks` **appends** agent marks (`markSource: "agent"`, name rule per §16.2, file must be a slice of the chapter) and sets `marksEdited: true`; `submitReview: true` snapshots all non-resolved comments into `Session.review` (re-submit only when a comment changed since `submittedAt`, else 409); `review: null` clears the snapshot (new review round, §16a); unknown chapterId → 404; `viewedFiles` replaces that chapter's list intersected with its slice paths (per ux §3.2) |
 | `PATCH /api/comments/:id` | `{ sessionId, text?, resolved?, priority?, reanchor?: { chapterId, file, side, line }, lastWriteAt }` | updated `Comment` (bumps `updatedAt`); `resolved: true` stamps `resolvedAt`; `reanchor` captures a fresh server-side `anchor` and clears `orphaned` |
-| `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter (sessions are analysed at creation, §16.2; this is manual regeneration); if `narrativeEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative edited", needsConfirm: true }` |
-| `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative → same 409 `needsConfirm` gate as above |
-| `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives and viewedFiles by chapter id, remaps comments (§13.3); any edited narrative → 409 `needsConfirm` gate as above |
+| `POST /api/sessions/:id/rerun` | `{ chapterId, confirm? }` | regenerates narrative + LLM marks for one chapter (sessions are analysed at creation, §16.2; this is manual regeneration); if `narrativeEdited` or `marksEdited` → requires `{ confirm: true }` else **409** `{ error: "narrative or marks edited", needsConfirm: true }` |
+| `POST /api/sessions/:id/rerun-all` | `{ confirm? }` | regenerates everything in place (§16.6): rules marks + classifier pass + narrative/LLM marks for **every** chapter; any edited narrative or agent marks → same 409 `needsConfirm` gate as above |
+| `POST /api/sessions/:id/rechunk` | `{ confirm? }` | re-runs the chapter grouping in place on the stored diff (semantic when `tasks.chunk` is configured, §8a; else pure §8); carries narratives, viewedFiles and agent marks by chapter id, remaps comments (§13.3); any edited narrative or agent marks → 409 `needsConfirm` gate as above |
 | `POST /api/sessions/:id/archive` | — | moves the session file to `.sky-eye/archive/` (§9.2); leaves the active list, subsequent loads → 404 |
 | `POST /api/sessions/:id/unarchive` | — | moves an archived session back to the active list |
 | `DELETE /api/sessions/:id` | — | permanently deletes the session file, active or archived |
@@ -768,6 +778,71 @@ diff's alphabetical path order.
   carried by chapter id, so ordering churn does not lose them.
 - The chapter rail (ux §3.3) and the "other chapter titles" prompt context
   (§16.2) both follow the stored order.
+
+## 16a. Agent review loop (`sky-eye review …`, task 030)
+
+An agent session (any harness that can run a shell — no MCP) drives sky-eye
+inline: the agent knows **why** a change was made, so it — not sky-eye's
+internal LLM — authors the chapter narratives and attention marks; the human
+reviews in the browser and submits; the agent blocks until the review comes
+back and receives the comments. Decision record: agent-as-narrator over
+context-injection (the session context nobody else has beats a lossy
+summary); plain CLI over an MCP server (capability, not discoverability, is
+what's needed).
+
+### 16a.1 The loop
+
+1. **Trigger** — the user asks in the agent session (keyword or explicit).
+2. **`sky-eye review start [--base <ref>]`** — ensure a server for THIS repo
+   is up, create the session with `analysis: "skip"`, print a JSON chapter
+   TOC on stdout. Does **not** open the browser (the agent hasn't narrated
+   yet).
+3. **Agent authors** narratives + marks from its own session context, then
+   **`sky-eye review narrate <id> --from <file|->`** — one bulk PATCH, then
+   the browser opens at the session.
+4. **`sky-eye review wait <id> [--timeout N] [--json]`** — prints the session
+   URL prominently and re-prints it on a refreshed line every ~30s (a user
+   returning to the terminal can still find it), then blocks until the human
+   clicks **Submit review** in the UI. Default waits forever; `--timeout N`
+   seconds exits 2 with "no review received". Prints the submitted snapshot
+   (readable text; `--json` minus `anchor`/`orphaned`); the agent acts on it.
+   An empty submit means "review passed".
+
+The blocking wait also prevents working-copy drift: the diff cannot change
+under the reviewer because the agent is parked.
+
+### 16a.2 Server discovery (binding)
+
+- The CLI probes `GET http://localhost:<port>/api/refs` for `port` in the
+  same scan range `serve` uses (one exported constant — probe and server
+  must not drift). A response only counts as **this repo's server** when
+  `refs.root` equals the CLI's resolved repo root; another repo's sky-eye on
+  a lower port is skipped. No match → spawn `sky-eye serve --no-open`
+  detached (`stdio: "ignore"`, `.unref()`, the current `execArgv` passed
+  through so the type-stripping runner behaves as the parent did) and poll
+  until `/api/refs` answers (≤ 5s deadline).
+- All CLI mutations carry `X-Sky-Eye: 1` and the session's `lastWriteAt`
+  (§9.4) — a concurrent user edit in the browser 409s and the CLI surfaces
+  the error to the agent; it never silently retries.
+
+### 16a.3 CLI contract
+
+- `review start` stdout: `{ sessionId, url, port, chapters: [{ id, title?,
+  files: ["<path> (<status>)"], hunks, changedLines }] }`. `url` is the
+  deep-link form `http://localhost:<port>/#<sessionId>` (§17).
+- `review narrate` input: `{ narratives: [{ chapterId, text }], marks?:
+  [{ chapterId, marks: [{ file, side, line, mark }] }] }` — the plural
+  PATCH contract of §10; one atomic write. Marks are validated server-side
+  (name rule per §16.2, file ∈ chapter slices) and appended with
+  `markSource: "agent"`; the chapter gets `marksEdited: true` and joins the
+  same `needsConfirm` gate as an edited narrative (rerun, rerun-all,
+  rechunk — regeneration must not silently delete the agent's judgment).
+- Round two: `start` on a `base..head` that already has a session clears
+  `review` (`PATCH { review: null }`) so `wait` cannot return a stale
+  snapshot from the previous round.
+- `Session.review` is loop state, not user state: excluded from import
+  merge (§14), untouched by comment writes after the snapshot, and the
+  session-level `reviewed` flag (user reading progress) is unrelated.
 
 ## 17. Deep links (D§4, U§3.2)
 

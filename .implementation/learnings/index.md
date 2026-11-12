@@ -20,3 +20,4 @@ the index is the lookup table, files are read on demand.
 - pierre-diffs.md — `overflow: 'wrap'` disables annotations (comments hidden while wrapped); option changes need dispose + rebuild
 - pierre-packages.md — gotcha (task 015): pierre `File` renders nothing when
   the file's language isn't preloaded; preload via `getSharedHighlighter` before render
+- agent-review.md — CLI-subprocess vs in-process server deadlock; mut() resolves {status}; spawn via bin wrapper; port probes need the root check

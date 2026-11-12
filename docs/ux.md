@@ -135,7 +135,10 @@ own row and nothing competes for attention:
 
    - **Primary buttons** (always visible): **mark reviewed** (a button, not
      a checkbox — toggles the session's reviewed state; when reviewed it
-     shows the marked state and clicking unmarks), **files** (explorer),
+     shows the marked state and clicking unmarks), **submit review** (spec
+     §16a — hands the open review comments to a waiting agent; harmless
+     with no agent waiting — the snapshot just sits in the session, and
+     submitting twice with nothing new says so), **files** (explorer),
      **export**, **wrap** (how long diff lines behave — the label shows the
      mode you'd switch to; see below).
 

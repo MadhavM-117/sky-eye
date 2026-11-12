@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { upsertIgnoreFile } from "./ignore.ts";
 import { checkConfig } from "./check-config.ts";
 import { serve } from "./server.ts";
+import { reviewCommand } from "./review-cli.ts";
 import {
   classifierRequest,
   loadClassifierConfig,
@@ -91,6 +92,13 @@ if (process.argv[2] === "check-config") {
   process.exit(0);
 }
 
+// `sky-eye review start|narrate|wait`: the agent review loop (§16a) —
+// exits without touching the server lifecycle (it manages its own)
+if (process.argv[2] === "review") {
+  await reviewCommand(process.argv.slice(3), root, kind);
+  process.exit(0);
+}
+
 upsertIgnoreFile(root, ".gitignore", true);
 upsertIgnoreFile(
   root,
@@ -98,13 +106,18 @@ upsertIgnoreFile(
   fs.existsSync(path.join(root, ".dockerignore")),
 );
 
+// `sky-eye serve [--no-open]`: plain server, spawnable by the review CLI
+const noOpen = process.argv[2] === "serve" && process.argv.includes("--no-open");
+
 const { port } = await serve(root, kind);
 console.log(
   `sky-eye serving ${root} (${kind} repo) → http://localhost:${port}`,
 );
 
 const url = `http://localhost:${port}`;
-const opener = process.platform === "darwin" ? "open" : "xdg-open";
-execFile(opener, [url], (err) => {
-  if (err) console.warn(`sky-eye: could not open browser — visit ${url}`);
-});
+if (!noOpen) {
+  const opener = process.platform === "darwin" ? "open" : "xdg-open";
+  execFile(opener, [url], (err) => {
+    if (err) console.warn(`sky-eye: could not open browser — visit ${url}`);
+  });
+}

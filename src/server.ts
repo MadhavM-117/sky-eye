@@ -156,13 +156,18 @@ export function handle(
   });
 }
 
-// serve() binds 4800, scanning upward on EADDRINUSE (spec §4.1)
+// serve() binds PORT_BASE=4800, scanning upward on EADDRINUSE up to
+// PORT_SCAN_MAX (spec §4.1) — one shared bound: the agent review loop's
+// server probe (§16a) scans the same range and must not drift
+export const PORT_BASE = 4800;
+export const PORT_SCAN_MAX = 4899;
+
 export function serve(
   root: string,
   kind: "git" | "jj",
 ): Promise<{ server: http.Server; port: number }> {
   return new Promise((resolve, reject) => {
-    let port = 4800;
+    let port = PORT_BASE;
     const tryPort = () => {
       const server = http.createServer((req, res) => {
         const addr = server.address();
@@ -171,6 +176,7 @@ export function serve(
       });
       server.once("error", (e: NodeJS.ErrnoException) => {
         if (e.code === "EADDRINUSE") {
+          if (port >= PORT_SCAN_MAX) return reject(new Error("no free port in 4800–4899"));
           tryPortOn(++port);
           return;
         }

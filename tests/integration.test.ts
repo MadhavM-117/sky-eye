@@ -5,7 +5,8 @@ import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import type { ExecFileSyncOptions } from "node:child_process";
 import { serve } from "../src/server.ts";
 import "../src/routes.ts";
 import { buildDiff, parseUnifiedDiff } from "../src/diff.ts";
@@ -888,4 +889,99 @@ test("rechunk: pure fallback keeps ids; chunk adapter regroups with titles; 409 
     assert.equal(guarded.body.needsConfirm, true);
     assert.equal((await mut("POST", `/api/sessions/${enc}/rechunk`, { confirm: true })).status, 200);
   });
+});
+
+// agent review loop (spec §16a, task 030): the server runs as its OWN
+// process here (like production) — an in-process server cannot answer a
+// CLI subprocess while execFileSync blocks this process's event loop
+// (self-deadlock: parent waits for child, server-in-parent waits for the
+// loop). The CLI runs as a real subprocess through the bin wrapper.
+test("agent review loop: CLI start/wait against a spawned server (spec §16a)", async () => {
+  const repo = makeRepo();
+  const bin = path.join(import.meta.dirname, "..", "bin", "sky-eye.js");
+  const server = spawn(process.execPath, [bin, "serve", "--no-open"], {
+    cwd: repo,
+    stdio: "ignore",
+  });
+  try {
+    // wait for the server to bind (scan range from src/server.ts)
+    let port = 0;
+    for (let i = 0; i < 50 && !port; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      for (let p = 4800; p <= 4809 && !port; p++) {
+        try {
+          const refs = await fetch(`http://127.0.0.1:${p}/api/refs`).then((r) => (r.ok ? r.json() : null));
+          if (refs?.root === repo) port = p;
+        } catch { /* not there */ }
+      }
+    }
+    assert.ok(port, "spawned server did not come up");
+
+    const cli = (args: string[], opts: ExecFileSyncOptions = {}): string =>
+      execFileSync(process.execPath, [bin, "review", ...args], {
+        cwd: repo,
+        encoding: "utf8",
+        ...opts,
+      }) as string;
+
+    // start: JSON TOC on stdout
+    const started = JSON.parse(cli(["start"])) as {
+      sessionId: string;
+      url: string;
+      port: number;
+      chapters: { id: string; files: string[]; hunks: number; changedLines: number }[];
+    };
+    assert.match(started.sessionId, /^[0-9a-zA-Z][0-9a-zA-Z+-]*\.\.[0-9a-zA-Z][0-9a-zA-Z+-]*$/);
+    assert.equal(started.port, port);
+    assert.ok(started.chapters.length >= 1);
+    assert.ok(started.chapters.every((c) => c.files.length >= 1 && c.changedLines > 0));
+
+    // rules marks ran (chapter pipeline) but no narrative pass
+    const sid = encodeURIComponent(started.sessionId);
+    portOf = port;
+    const got = await get(`/api/sessions/${sid}`);
+    assert.equal(got.body.chapters[0].narrative, "unanalyzed");
+
+    // wait on a review-less session → timeout exit 2
+    let err: (Error & { status?: number }) | null = null;
+    try {
+      cli(["wait", started.sessionId, "--timeout", "1"], { stdio: "pipe" });
+    } catch (e) {
+      err = e as Error & { status?: number };
+    }
+    assert.equal(err?.status, 2);
+
+    // a comment, then submit → snapshot; CLI wait --json returns it (no anchors)
+    const cm = await mut("POST", "/api/comments", {
+      sessionId: started.sessionId,
+      chapterId: started.chapters[0].id,
+      file: "src/a.ts",
+      side: "new",
+      line: 1,
+      text: "rename this variable",
+      priority: "must-fix",
+    });
+    assert.equal(cm.status, 201);
+    const sub = await mut("PATCH", `/api/sessions/${sid}`, { submitReview: true });
+    assert.equal(sub.status, 200);
+    assert.equal(sub.body.review.comments.length, 1);
+
+    const waitOut = cli(["wait", started.sessionId, "--json"]);
+    assert.match(waitOut, /rename this variable/);
+    assert.match(waitOut, /must-fix/);
+    assert.doesNotMatch(waitOut, /"anchor"/);
+
+    // re-submit with nothing new → 409; then start again (same base..head)
+    // clears the review so the next wait blocks (round two, §16a.3)
+    // the harness resolves with {status} — 409 is asserted, not thrown
+    const resub = await mut("PATCH", `/api/sessions/${sid}`, { lastWriteAt: sub.body.lastWriteAt, submitReview: true });
+    assert.equal(resub.status, 409);
+    const second = JSON.parse(cli(["start"])) as { sessionId: string };
+    assert.equal(second.sessionId, started.sessionId);
+    const cleared = await get(`/api/sessions/${sid}`);
+    assert.equal(cleared.body.review, undefined);
+  } finally {
+    server.kill();
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
 });

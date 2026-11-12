@@ -17,7 +17,8 @@ import { captureAnchor, captureAnchorFromHunks } from "./anchors.ts";
 export { writeSession as persistSession };
 import { readFileAt } from "./tree.ts";
 import { remapComments } from "./remap.ts";
-import type { Anchor, Chapter, Comment, Hunk, Session } from "./types.ts";
+import { MARK_NAME } from "./types.ts";
+import type { Anchor, Chapter, Comment, Hunk, LineMark, Session } from "./types.ts";
 
 // traversal-safe session ids (spec §9.2): `..` is a substring by design
 export const VALID_SESSION_ID =
@@ -264,7 +265,65 @@ export function patchSession(
       : [];
     chapter.viewedFiles = [...new Set(files)];
   }
+  // plural forms (§16a) — the CLI's one bulk write; the frontend keeps the
+  // singular `narrative` field above
+  if (Array.isArray(body.narratives)) {
+    for (const n of body.narratives as { chapterId?: string; text?: string }[]) {
+      const chapter = session.chapters.find((c) => c.id === n.chapterId);
+      if (!chapter) throw new ApiError(404, `unknown chapter: ${n.chapterId}`);
+      chapter.narrative = n.text ?? "";
+      chapter.narrativeEdited = true;
+    }
+  }
+  if (Array.isArray(body.marks)) {
+    for (const m of body.marks as { chapterId?: string; marks?: unknown }[]) {
+      const chapter = session.chapters.find((c) => c.id === m.chapterId);
+      if (!chapter) throw new ApiError(404, `unknown chapter: ${m.chapterId}`);
+      // append, not replace: rule/custom marks survive (same semantics as
+      // the LLM pass); agent marks are authored content → marksEdited gate
+      chapter.attention.push(...validateAgentMarks(m.marks, chapter));
+      chapter.marksEdited = true;
+    }
+  }
+  if (body.submitReview === true) {
+    const prev = session.review;
+    if (prev && !session.comments.some((c) => c.updatedAt > prev.submittedAt))
+      throw new ApiError(409, "review already submitted, nothing new");
+    session.review = buildReviewSnapshot(session);
+  }
+  if (body.review === null) delete session.review; // new review round (§16a)
   return writeSession(root, session);
+}
+
+// agent-authored marks (§16a): name rule shared with the narrate LLM pass,
+// file must be a slice of the chapter, line sanity only — a mark outside
+// every hunk renders nowhere, harmless (no per-hunk range check).
+export function validateAgentMarks(raw: unknown, chapter: Chapter): LineMark[] {
+  if (!Array.isArray(raw)) throw new ApiError(400, "marks must be an array");
+  const slices = new Set(chapter.files.map((s) => s.file));
+  return raw.map((r) => {
+    const m = r as { file?: unknown; side?: unknown; line?: unknown; mark?: unknown };
+    if (
+      typeof m.file !== "string" || !slices.has(m.file) ||
+      (m.side !== "old" && m.side !== "new") ||
+      typeof m.line !== "number" || !Number.isInteger(m.line) || m.line < 1 ||
+      typeof m.mark !== "string" || !MARK_NAME.test(m.mark)
+    )
+      throw new ApiError(400, `invalid mark in chapter ${chapter.id}`);
+    return { file: m.file, side: m.side, line: m.line, mark: m.mark, markSource: "agent" as const };
+  });
+}
+
+// snapshot of the open review (§16a): field copies at submit time — later
+// edits to live comments never mutate the snapshot. Resolved comments are
+// excluded: they need no action from the agent.
+export function buildReviewSnapshot(session: Session): Session["review"] {
+  return {
+    submittedAt: Date.now(),
+    comments: session.comments
+      .filter((c) => !c.resolved)
+      .map((c) => ({ ...c })),
+  };
 }
 
 // ---- import (spec §14) ------------------------------------------------

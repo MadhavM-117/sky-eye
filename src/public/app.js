@@ -338,6 +338,7 @@ function renderSession(session, route = null) {
       </div>
       <div class="h-row h-actions">
         <button id="mark-reviewed" class="${session.reviewed ? "marked" : ""}" title="${session.reviewed ? "this review is marked reviewed — click to unmark" : "mark this review as reviewed"}">${session.reviewed ? "✓ reviewed" : "mark reviewed"}</button>
+        <button id="submit-review" title="hand your open review comments to a waiting agent (spec: agent review loop)">submit review</button>
         <a class="explorer-link" href="#${esc(session.id)}/explorer/§head" title="browse the repository's files">files</a>
         <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
         <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export" title="download this review as JSON">export</a>
@@ -1250,10 +1251,37 @@ function wireSession(session, route = null) {
     }
   });
 
+  // submit review (spec §16a): snapshot the open comments for the waiting
+  // agent; harmless with no agent waiting — the snapshot just sits there
+  document.getElementById("submit-review")?.addEventListener("click", async () => {
+    try {
+      current = await mut("PATCH", `/api/sessions/${encodeURIComponent(current.id)}`, {
+        lastWriteAt: current.lastWriteAt,
+        submitReview: true,
+      });
+      submitNotice(`review submitted — ${current.review.comments.length} comment${current.review.comments.length === 1 ? "" : "s"} handed to the agent`);
+    } catch (e) {
+      if (e?.status === 409) {
+        if (String(e?.error ?? "").includes("nothing new")) submitNotice("already submitted — no new comments since");
+        else if (confirm("session changed elsewhere — reload?")) location.reload();
+      }
+    }
+  });
+
   // overflow menu closes once an action is picked (the actions navigate or
   // show their own banner — a lingering open menu hides the feedback)
   document.querySelector(".more-menu .menu")?.addEventListener("click", () => {
     const d = document.querySelector("details.more-menu");
     if (d) d.open = false;
   });
+}
+
+// transient header-row notice for the submit-review feedback (self-removes)
+function submitNotice(text) {
+  document.querySelector(".submit-notice")?.remove();
+  const el = document.createElement("span");
+  el.className = "submit-notice";
+  el.textContent = text;
+  document.querySelector(".h-actions")?.append(el);
+  setTimeout(() => el.remove(), 4000);
 }

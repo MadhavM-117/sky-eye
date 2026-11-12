@@ -170,6 +170,12 @@ export function carryChapterState(chapters: Chapter[], old: Map<string, Chapter>
     if (prev) {
       c.narrative = prev.narrative;
       if (prev.narrativeEdited) c.narrativeEdited = true;
+      // agent marks are authored content (§16a) — carry them like narratives,
+      // else rechunk/refresh silently deletes the agent's judgment
+      if (prev.marksEdited) {
+        c.attention = prev.attention;
+        c.marksEdited = true;
+      }
       // defensive filter — an unchanged id means unchanged slices, but keeps
       // the invariant "stored ⊆ slice paths"
       if (prev.viewedFiles?.length)
@@ -199,8 +205,8 @@ export async function rechunkSession(
   session: Session,
   confirm: boolean,
 ): Promise<Session> {
-  if (session.chapters.some((c) => c.narrativeEdited) && !confirm)
-    throw new ApiError(409, "narrative edited", { error: "narrative edited", needsConfirm: true });
+  if (session.chapters.some((c) => c.narrativeEdited || c.marksEdited) && !confirm)
+    throw new ApiError(409, "narrative or marks edited", { error: "narrative or marks edited", needsConfirm: true });
   const diffText = await buildDiff(root, kind, session.base, session.head);
   const oldChapters = new Map(session.chapters.map((c) => [c.id, c]));
   session.chapters = carryChapterState(

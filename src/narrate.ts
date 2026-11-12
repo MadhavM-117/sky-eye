@@ -9,10 +9,10 @@ import { resolveTask } from "./llm.ts";
 import { applyClassifier, loadClassifyRules } from "./custom-classifier.ts";
 import { persistSession } from "./store.ts";
 import { readFileAt } from "./tree.ts";
+import { MARK_NAME } from "./types.ts";
 import type { Chapter, LlmAdapter, LlmRequest, LineMark, Session } from "./types.ts";
 
 const CONTEXT_LINES = 10; // new-side context around each hunk (§16.2)
-const MARK_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 
 export interface RawMark {
   file: string;
@@ -178,8 +178,8 @@ export async function rerunChapter(
 ): Promise<Session> {
   const chapter = session.chapters.find((c) => c.id === chapterId);
   if (!chapter) throw new ApiError(404, `unknown chapter: ${chapterId}`);
-  if (chapter.narrativeEdited && !confirm)
-    throw new ApiError(409, "narrative edited", { error: "narrative edited", needsConfirm: true });
+  if ((chapter.narrativeEdited || chapter.marksEdited) && !confirm)
+    throw new ApiError(409, "narrative or marks edited", { error: "narrative or marks edited", needsConfirm: true });
 
   const a = adapters ?? { narrate: resolveTask(root, "narrate"), classify: resolveTask(root, "classify") };
   if (!a.narrate && !a.classify) return session; // no config → rules-only world
@@ -199,8 +199,8 @@ export async function rerunAll(
   confirm: boolean,
   adapters?: Adapters,
 ): Promise<Session> {
-  if (session.chapters.some((c) => c.narrativeEdited) && !confirm)
-    throw new ApiError(409, "narrative edited", { error: "narrative edited", needsConfirm: true });
+  if (session.chapters.some((c) => c.narrativeEdited || c.marksEdited) && !confirm)
+    throw new ApiError(409, "narrative or marks edited", { error: "narrative or marks edited", needsConfirm: true });
   // rules pass first (machine-owned, config-free), then the custom
   // classifier (§16.5) — narrate's LLM marks only overwrite "rules" marks,
   // so custom marks survive the narrate loop (§9.3 semantics)

@@ -56,3 +56,11 @@ below is the current plan.
   layered under the repo's `.sky-eye/config.json` (repo wins per field, deep
   merge, arrays replaced); `src/config.ts` + loader delegation; check-config
   reports layered paths — **done**
+- `029` UI density, summary, wrap/scroll — full-window layout (no 1200px
+  frame), header change summary `N files · +x −y`, wrap/scroll toggle for
+  long diff lines (pierre `overflow: 'wrap'`; annotations hidden while
+  wrapped — known trade-off, button title says so) — **done**
+- `030` Agent review loop — `sky-eye review start|narrate|wait`: agent
+  authors narratives + marks from its own session context, human reviews in
+  the browser, submit-review snapshot returned to the blocking agent
+  (spec section + schema/API deltas; generic CLI, no MCP — decided)

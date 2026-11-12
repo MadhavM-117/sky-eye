@@ -69,7 +69,7 @@ files you can export and share.
 | 3 | Attention highlighting (focus / glance / safe) | `classify.ts` | rule pass first (test changes, comments, lockfiles → safe; new auth/money/async/error paths → focus); LLM pass refines, opt-in |
 | 4 | Comments on lines | comments API + frontend gutter click | GitHub-style: click line → inline composer, reply, resolve |
 | 5 | Local persistence + single-file export | per-session JSON files; export = copy of the file, import = load + merge by session ID | re-verify guards against importing a review of a different commit |
-| 6 | Narrative overview per chapter | `narrate.ts` | LLM per chapter (diff hunk + surrounding file context in, short paragraph out); cached in the session file so it's generated once; human-editable afterwards (§6a) |
+| 6 | Narrative overview per chapter | `narrate.ts` | LLM per chapter (diff hunk + surrounding file context in, short paragraph out); cached in the session file so it's generated once; human-editable afterwards (§6a). An agent session (spec §16a) is a first-class alternative narrator: it authors narratives + marks from its own task context and sky-eye only structures them |
 
 Features 3 and 6 realistically need an LLM; rules alone give coarse
 classification and "unanalyzed" narratives. The LLM is a quality upgrade, not
@@ -247,7 +247,8 @@ history — those get orphaned, not moved), and base-commit-change remapping
 
 ## 6a. Narrative generation
 
-How a chapter summary is produced:
+How a chapter summary is produced (the standalone path — the agent review
+loop of spec §16a is the second, agent-authored source):
 
 - **Firing**: eagerly, as the final step of every chapter-building pipeline
   (creation, refresh/supersede, re-chunk) — a session is fully analysed

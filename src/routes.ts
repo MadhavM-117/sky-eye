@@ -57,6 +57,7 @@ route("POST", "/api/sessions", async ({ root, kind, body }) => {
     head?: string;
     baseLabel?: string;
     headLabel?: string;
+    analysis?: "full" | "skip";
   };
   if (!b.base || !b.head)
     throw new ApiError(400, "base and head are required");
@@ -69,6 +70,9 @@ route("POST", "/api/sessions", async ({ root, kind, body }) => {
     b.headLabel,
   );
   if (!created) return { status: 200, value: session };
+  // analysis: "skip" (§16a): the agent review loop narrates itself — stop
+  // after rules marks, no classifier/narrative/ordering pass
+  if (b.analysis === "skip") return { status: 201, value: session };
   // eager analysis (§16.2): the served session is fully analysed before it
   // is shown — degraded LLM config just leaves chapters "unanalyzed"
   return { status: 201, value: await ensureAnalyzed(root, kind, session) };
