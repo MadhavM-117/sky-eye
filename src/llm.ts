@@ -3,23 +3,14 @@
 // custom exec adapter. Blocking calls only (streaming deferred). A task
 // without a resolvable config is skipped by returning undefined — sessions
 // never block on the LLM layer (§16.1).
-import fs from "node:fs";
-import path from "node:path";
 import { spawn } from "node:child_process";
+import { loadConfigObject } from "./config.ts";
 import type { LlmAdapter, LlmConfig, LlmRequest, LlmTaskConfig } from "./types.ts";
 
 export const DEFAULT_TIMEOUT_MS = 120_000;
 
-const configPath = (root: string) => path.join(root, ".sky-eye", "config.json");
-
 export function loadLlmConfig(root: string): LlmConfig | undefined {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(configPath(root), "utf8")) as LlmConfig;
-    if (!parsed || typeof parsed !== "object") return undefined;
-    return parsed;
-  } catch {
-    return undefined;
-  }
+  return loadConfigObject(root) as LlmConfig | undefined;
 }
 
 // defaults ← task override merge; `command` wins over provider.

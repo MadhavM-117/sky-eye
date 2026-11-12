@@ -10,38 +10,32 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { loadConfigObject } from "./config.ts";
 import { decisionsClassify } from "./decisions.ts";
 import type { Chapter, ClassifierConfig, ClassifyRules, LineMark } from "./types.ts";
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
-const configPath = (root: string) => path.join(root, ".sky-eye", "config.json");
-
 // missing/invalid config → undefined: the custom pass is a no-op, sessions
 // never block on it (§16.1 rule)
 export function loadClassifierConfig(root: string): ClassifierConfig | undefined {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
-    const c = parsed.classifier;
-    // exec hook wins over built-in backends (documented in §16.1)
-    if (typeof c?.command === "string" && c.command.trim()) {
-      return {
-        command: c.command,
-        timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
-        fallback: c.fallback !== false,
-        debug: c.debug === true,
-      };
-    }
-    // built-in backends — openrouter needs a model; openai defaults to
-    // gpt-6-luna (the only model its Decisions API serves today)
-    if (c?.builtin === "openrouter" && typeof c.model === "string" && c.model.trim())
-      return { builtin: "openrouter", model: c.model, ...sharedBuiltin(c) };
-    if (c?.builtin === "openai")
-      return { builtin: "openai", model: (typeof c.model === "string" && c.model.trim()) || "gpt-6-luna", ...sharedBuiltin(c) };
-    return undefined;
-  } catch {
-    return undefined;
+  const c = loadConfigObject(root)?.classifier as Record<string, unknown> | undefined;
+  // exec hook wins over built-in backends (documented in §16.1)
+  if (typeof c?.command === "string" && c.command.trim()) {
+    return {
+      command: c.command,
+      timeoutMs: typeof c.timeoutMs === "number" ? c.timeoutMs : DEFAULT_TIMEOUT_MS,
+      fallback: c.fallback !== false,
+      debug: c.debug === true,
+    };
   }
+  // built-in backends — openrouter needs a model; openai defaults to
+  // gpt-6-luna (the only model its Decisions API serves today)
+  if (c?.builtin === "openrouter" && typeof c.model === "string" && c.model.trim())
+    return { builtin: "openrouter", model: c.model, ...sharedBuiltin(c) };
+  if (c?.builtin === "openai")
+    return { builtin: "openai", model: (typeof c.model === "string" && c.model.trim()) || "gpt-6-luna", ...sharedBuiltin(c) };
+  return undefined;
 }
 
 // fields every built-in backend shares (model is per-backend above)
@@ -72,18 +66,14 @@ function validCriteria(raw: unknown): Record<string, string> | undefined {
 // config.json, key `classifyRules`; kept out of chunker's loadConfig so the
 // chunker stays about chunking
 export function loadClassifyRules(root: string): ClassifyRules | undefined {
-  try {
-    const r = (JSON.parse(fs.readFileSync(configPath(root), "utf8")) as {
-      classifyRules?: { safePaths?: unknown; focusPaths?: unknown };
-    }).classifyRules;
-    if (!r || typeof r !== "object") return undefined;
-    const rules: ClassifyRules = {};
-    if (Array.isArray(r.safePaths)) rules.safePaths = r.safePaths.filter((g): g is string => typeof g === "string");
-    if (Array.isArray(r.focusPaths)) rules.focusPaths = r.focusPaths.filter((g): g is string => typeof g === "string");
-    return rules.safePaths?.length || rules.focusPaths?.length ? rules : undefined;
-  } catch {
-    return undefined;
-  }
+  const r = loadConfigObject(root)?.classifyRules as
+    | { safePaths?: unknown; focusPaths?: unknown }
+    | undefined;
+  if (!r || typeof r !== "object") return undefined;
+  const rules: ClassifyRules = {};
+  if (Array.isArray(r.safePaths)) rules.safePaths = r.safePaths.filter((g): g is string => typeof g === "string");
+  if (Array.isArray(r.focusPaths)) rules.focusPaths = r.focusPaths.filter((g): g is string => typeof g === "string");
+  return rules.safePaths?.length || rules.focusPaths?.length ? rules : undefined;
 }
 
 // ---- protocol v1 ---------------------------------------------------------

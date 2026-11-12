@@ -52,3 +52,7 @@ below is the current plan.
   `claude` provider, the `authToken` key and `@anthropic-ai/sdk` — runtime
   deps zero again; unknown provider values fail loudly (spec §2/§16.1/§22.2)
   — **done**
+- `028` Global config (XDG) — optional `$XDG_CONFIG_HOME/sky-eye/config.json`
+  layered under the repo's `.sky-eye/config.json` (repo wins per field, deep
+  merge, arrays replaced); `src/config.ts` + loader delegation; check-config
+  reports layered paths — **done**

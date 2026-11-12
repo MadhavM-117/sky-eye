@@ -1,0 +1,35 @@
+{
+  "//": [
+    "Sample sky-eye config — copy to <repo>/.sky-eye/config.json and adjust.",
+    "",
+    "This enables every AI feature:",
+    "  narrate    — chapter narratives + LLM attention marks",
+    "  classify   — per-line attention marks (shares one call with narrate",
+    "               here, since both resolve to the same adapter)",
+    "  chunk      — semantic chapter grouping (titles + reading order)",
+    "  classifier — separate per-line decision pass (OpenAI Decisions API)",
+    "",
+    "Credentials: the claude-code provider runs each task through the `claude`",
+    "CLI (subscription auth — run `claude auth login` once, keep the binary on",
+    "PATH); the classifier reads OPENAI_API_KEY from the env (or set \"apiKey\"",
+    "below). Missing credentials → that task is skipped, never a hard failure.",
+    "",
+    "sky-eye ignores unknown keys, so \"//\" keys are safe to keep as comments.",
+    "",
+    "This file can also live machine-wide at ~/.config/sky-eye/config.json",
+    "($XDG_CONFIG_HOME respected) — the repo's .sky-eye/config.json then wins",
+    "per field, so put secrets/defaults here and repo-specific overrides there."
+  ],
+  "defaults": {
+    "//": "Claude subscription — check the exact model id your plan offers, e.g. fall back to \"claude-haiku-4-5\" if 5.5 isn't listed yet.",
+    "provider": "claude-code",
+    "model": "claude-haiku-5-5"
+  },
+  "classifier": {
+    "//": "All keys below are optional: model (default gpt-6-luna), apiKey (OPENAI_API_KEY env works), timeoutMs (30000), fallback (true — rules marks survive a failed run), debug (false — full transcript into classifier.log).",
+    "builtin": "openai"
+  },
+  "//extras": "Optional extras — copy these keys in as needed:",
+  "//classifyRules": { "safePaths": [], "focusPaths": [] },
+  "//review": { "targetLines": 75, "maxLines": 200 }
+}

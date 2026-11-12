@@ -29,11 +29,13 @@ test("no config file: everything skips, static keys report defaults", async () =
       ["classifier", "skip"],
       ["classifyRules", "ok"],
       ["review", "ok"],
+      ["config", "ok"],
     ],
   );
   assert.match(results[0].detail, /not configured/);
   assert.equal(results[4].detail, "defaults");
   assert.equal(results[5].detail, "target 75 / max 200 lines");
+  assert.equal(results[6].detail, "no config file"); // withConfig(null) → no .sky-eye at all
 });
 
 test("openai provider pings once; classify shares the adapter; static overrides reported", async () => {

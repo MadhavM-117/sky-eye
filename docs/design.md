@@ -274,7 +274,9 @@ How a chapter summary is produced:
   is hidden behind the loading indicator. No LLM needed to edit — the
   editor opens over "unanalyzed" too.
 - **Per-task model/key config**: a config file at `.sky-eye/config.json`
-  (inside the ignored state folder, so keys never land in git/jj/docker).
+  (inside the ignored state folder, so keys never land in git/jj/docker),
+  layered under an optional machine-wide
+  `$XDG_CONFIG_HOME/sky-eye/config.json` (repo wins per field; spec §16.1).
   Tasks (v1: `narrate`, `classify`, `chunk`; the classifier pass (spec §16.5 — exec
   hook or built-in backends — decision-model APIs: OpenRouter's
   (`builtin: "openrouter"`, e.g. typesafe/jev-1.14) or OpenAI's

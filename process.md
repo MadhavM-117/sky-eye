@@ -42,7 +42,8 @@ fork knowledge into conversations. This file only governs *how* we work.
 - Server logic lives in pure functions; CLIs are spawned only at
   integration boundaries.
 - Customization stays cheap: all theme values are CSS custom properties,
-  user-adjustable behavior goes through `.sky-eye/config.json` (spec
+  user-adjustable behavior goes through `.sky-eye/config.json` layered over
+  `$XDG_CONFIG_HOME/sky-eye/config.json` (repo wins per field — spec
   §16.1 scheme). Nothing user-facing is hard-coded. v1 ships no dark mode
   or theme UI — the architecture just must not block adding them.
 - Written for human understanding first: clear names, small files, comments

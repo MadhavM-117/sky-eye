@@ -37,3 +37,10 @@
 - Parent-session env strip for spawned `claude` children copied verbatim from
   pi-claude-bridge (`PARENT_SESSION_VARS` in its `cc-child.ts`) — two repos
   now own that list; update both together.
+- Global config layer (task 028): `src/config.ts` `loadConfigObject(root)`
+  merges `$XDG_CONFIG_HOME/sky-eye/config.json` under the repo's
+  `.sky-eye/config.json` — deep-merge per field, arrays/scalars replaced,
+  read-side only. Loaders keep their own key validation; never read config
+  files directly in a new module. Tests pin `XDG_CONFIG_HOME` (the npm test
+  script points it at a fresh mktemp so a real global config can't flake the
+  suite); check-config reports the layered paths in a trailing `config` row.

@@ -2,21 +2,14 @@
 // keep-together up to maxLines (§8.4), distance fallback when no header
 // context; chapters may span files — no file-boundary split (task 009).
 import { createHash } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
+import { loadConfigObject } from "./config.ts";
 import type { Chapter, FileDiff, FileSlice, Hunk, ReviewConfig } from "./types.ts";
 
 const DEFAULT_CONFIG: ReviewConfig = { targetLines: 75, maxLines: 200 };
 
 export function loadConfig(root: string): ReviewConfig {
-  try {
-    const parsed = JSON.parse(
-      fs.readFileSync(path.join(root, ".sky-eye", "config.json"), "utf8"),
-    ) as { review?: Partial<ReviewConfig> };
-    return { ...DEFAULT_CONFIG, ...parsed.review };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
+  const parsed = loadConfigObject(root) as { review?: Partial<ReviewConfig> } | undefined;
+  return { ...DEFAULT_CONFIG, ...parsed?.review };
 }
 
 export const changedLines = (hunk: Hunk) =>

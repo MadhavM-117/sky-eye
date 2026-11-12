@@ -42,12 +42,16 @@ config, logs) — never in the sky-eye install.
 ## Configuration
 
 A ready-to-copy sample with all AI features enabled lives at
-[`docs/config.sample.jsonc`](docs/config.sample.jsonc).
+[`docs/config.sample.json`](docs/config.sample.json) (plain JSON — `"//"`
+keys are comments; sky-eye ignores unknown keys).
 
-All config lives in `<repo>/.sky-eye/config.json` (inside the ignored
-folder — keys never land in git/jj). Missing file or missing keys never
-block anything: LLM-powered features are simply skipped and you get the
-purely local experience (rule-based marks, "unanalyzed" chapters).
+Config is per-repo: `<repo>/.sky-eye/config.json` (inside the ignored
+folder — keys never land in git/jj), optionally layered over a machine-wide
+`~/.config/sky-eye/config.json` (`$XDG_CONFIG_HOME` respected) for defaults
+and secrets you don't want to copy into every repo — the repo file wins per
+field. Missing file or missing keys never block anything: LLM-powered
+features are simply skipped and you get the purely local experience
+(rule-based marks, "unanalyzed" chapters).
 
 ```jsonc
 {

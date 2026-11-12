@@ -5,6 +5,9 @@
 // a synthetic one-line request, static keys are reported as parsed.
 // Read-only: no sessions, no logs (spawnClassifier/decisionsClassify only
 // log via applyClassifier).
+import fs from "node:fs";
+import path from "node:path";
+import { globalConfigPath } from "./config.ts";
 import {
   PROTOCOL,
   loadClassifyRules,
@@ -127,6 +130,12 @@ export async function checkConfig(root: string, fetchImpl = fetch): Promise<Chec
   });
   const review = loadReviewConfig(root);
   results.push({ name: "review", status: "ok", detail: `target ${review.targetLines} / max ${review.maxLines} lines` });
+
+  // which config files were layered (global XDG under the repo's, §16.1)
+  const repoConfigPath = path.join(root, ".sky-eye", "config.json");
+  const sources = [fs.existsSync(globalConfigPath()) && globalConfigPath(), fs.existsSync(repoConfigPath) && repoConfigPath]
+    .filter((p): p is string => !!p);
+  results.push({ name: "config", status: "ok", detail: sources.length ? sources.join(" + ") : "no config file" });
 
   return results;
 }

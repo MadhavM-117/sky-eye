@@ -76,6 +76,7 @@ sky-eye/
 │   ├── remap.ts              # re-anchor comments onto a new diff
 │   ├── identity.ts           # author name/email from jj/git config
 │   ├── store.ts              # session files: load/save/list/merge-import, atomic writes
+│   ├── config.ts             # config layering: global XDG config under .sky-eye/config.json (repo wins)
 │   └── llm.ts                # OpenAI-compatible client + config loading (.sky-eye/config.json)
 │   └── public/               # source; bundled by esbuild → public/dist/ (served statically)
 │       ├── index.html
@@ -267,7 +268,8 @@ Algorithm:
    `newStart = 0, newLines = 0`. Stable under re-running the chunker on an
    identical diff; breaks when the diff changes (accepted, D§11).
 
-**Config knob:** chapter size limits live in `.sky-eye/config.json` under
+**Config knob:** chapter size limits live in config (global XDG layer or
+repo's `.sky-eye/config.json`, §16.1) under
 `"review": { "targetLines": 75, "maxLines": 200 }` (see §16.3; Open
 Question on whether a UI for this is ever needed — v1: file only).
 
@@ -588,8 +590,19 @@ during step 4. This is the D§11 risk, accepted.
 
 ### 16.1 Config
 
-`.sky-eye/config.json` (inside the ignored folder — keys never land in
-git/jj/docker), exactly D§6a: `defaults` + per-task overrides for
+Two config layers, deep-merged per field with the **repo winning**
+(`src/config.ts`; read-side only — sky-eye never creates either file):
+
+1. **Global (optional):** `$XDG_CONFIG_HOME/sky-eye/config.json`
+   (default `~/.config/sky-eye/config.json`) — machine-wide defaults and
+   secrets (`apiKey`), shared by every repo. Applies to repos opened on this
+   machine, including ones with no `.sky-eye/` of their own.
+2. **Repo:** `.sky-eye/config.json` (inside the ignored folder — keys never
+   land in git/jj/docker).
+
+Plain objects merge recursively; arrays and scalars are replaced by the repo
+layer wholesale. Missing files (or missing keys after the merge) behave as
+before. The schema, exactly D§6a: `defaults` + per-task overrides for
 `narrate` / `classify` / `chunk` (`apiKey`, `model`, `baseUrl`, `provider`, plus
 `claudePath` for the claude-code provider (§22.2: the `claude` CLI run in
 print mode — auth delegated entirely to Claude Code's own login, so
@@ -610,7 +623,8 @@ buckets — §16.4). Missing file or
 missing key for a task → **task skipped, never blocks the session**
 (narrative = "unanalyzed", marks = rules only).
 
-`sky-eye check-config` probes the config end-to-end: each configured LLM
+`sky-eye check-config` probes the merged config end-to-end and reports which
+config files were layered: each configured LLM
 task resolves through the runtime path (`resolveTask`) and answers a
 one-shot ping — shared adapters (§16.3) pinged once; an unknown provider
 value (e.g. configs left on task 024's removed `claude`) reports as failed,
