@@ -220,8 +220,10 @@ function markGlyph(mark) {
   node.className = cls ? `sky-mark-glyph sky-mark-${cls}` : "sky-mark-glyph";
   node.textContent = glyph;
   node.title = title;
+  // top-aligned (not vertically centered): wrapped/annotation rows grow the
+  // cell — the glyph must stay next to its line number on the first row
   node.style.cssText =
-    "position:absolute;inset-block:0;left:6px;display:flex;align-items:center;" +
+    "position:absolute;left:6px;top:0;display:flex;align-items:flex-start;padding-top:3px;" +
     `color:${color};font-weight:600;`;
   return node;
 }
