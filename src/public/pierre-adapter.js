@@ -121,6 +121,10 @@ export function createFileDiff(file, hunks, {
   renderAnnotation,
   annotations = [],
   marks = [],
+  // pierre-native long-line handling (task 029): 'scroll' (default) keeps
+  // comment annotations; 'wrap' disables them inside pierre (FileDiff sets
+  // disableAnnotations when wrapping) — the UI toggle documents this
+  overflow = "scroll",
 } = {}) {
   const meta = fileDiffMetadata(file, hunks);
   if (!meta) return null;
@@ -130,6 +134,7 @@ export function createFileDiff(file, hunks, {
     diffStyle: "split",
     theme: DEFAULT_THEMES,
     disableFileHeader: true,
+    overflow,
     enableLineSelection: true,
     onLineSelectionChange: onSelectionChange && ((range) => onSelectionChange(range)),
     // fires once on release with the completed range — the only event a

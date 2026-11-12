@@ -35,7 +35,7 @@ body {
   background: var(--bg);
 }
 
-.frame { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
+.frame { padding: 0 16px 48px; }
 
 header {
   display: flex;

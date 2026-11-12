@@ -17,5 +17,6 @@ the index is the lookup table, files are read on demand.
 - openrouter-decisions.md — decision-model API envelopes (OpenRouter + OpenAI), endpoint paths, apiKey resolution chains
 - server-protocol.md — route result shapes ({status,value}, {raw,headers}), security checks order
 - frontend-routing.md — explorer hash separator is `§<side>`, not `/<side>`
+- pierre-diffs.md — `overflow: 'wrap'` disables annotations (comments hidden while wrapped); option changes need dispose + rebuild
 - pierre-packages.md — gotcha (task 015): pierre `File` renders nothing when
   the file's language isn't preloaded; preload via `getSharedHighlighter` before render

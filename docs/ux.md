@@ -126,13 +126,27 @@ own row and nothing competes for attention:
    (`meta.repo`, display only) with a small pill label (`repo`), then the
    current (head) branch and the base branch the review compares against
    as "<head> → <base>" — so it is always unambiguous what is
-   under review and against what.
+   under review and against what. The row ends with the **change summary**
+   for the whole review: `N files · +x −y` (distinct files touched, changed
+   lines added/deleted summed over all chapters) — the same numbers the
+   chapter rail shows per chapter, here answering for the entire change.
+   (A session-level narrative was considered for this spot and deferred.)
 3. **Actions row** — grouped, primary first, so the row reads at a glance:
 
    - **Primary buttons** (always visible): **mark reviewed** (a button, not
      a checkbox — toggles the session's reviewed state; when reviewed it
      shows the marked state and clicking unmarks), **files** (explorer),
-     **export**.
+     **export**, **wrap** (how long diff lines behave — the label shows the
+     mode you'd switch to; see below).
+
+   **Line overflow** — diffs default to **scroll**: long lines keep their
+   row and scroll horizontally. The **wrap** button switches every diff to
+   wrapping (each line breaks onto continuation rows, no horizontal
+   scrollbar) and the button becomes **scroll** to switch back. The
+   preference is per visit, not persisted. Caveat: while wrapped, pierre's
+   diff renderer disables its line-annotation layer, so **comments and the
+   comment composer are hidden** until you switch back to scroll (the
+   button's hover text says so); attention-mark gutter glyphs are unaffected.
    - **Overflow menu** ("more ▾", collapsible): regenerate all (one click
      re-runs marks + narratives for every chapter; asks once before
      overwriting any edited narrative; while it runs the button is

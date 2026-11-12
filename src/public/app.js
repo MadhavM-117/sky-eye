@@ -29,6 +29,10 @@ let activeChapterId = null;
 let activeSid = null;
 let railCollapsed = false;
 let pendingTriage = null;
+// long-line handling for diffs (task 029): 'scroll' default; the header
+// toggle switches to pierre's 'wrap' — pierre hides comment annotations
+// while wrapped, the button title says so. Transient like railCollapsed.
+let diffOverflow = "scroll";
 
 // viewed state (task 021, spec §9.3): persisted per (chapter, file) slice via
 // PATCH viewedFiles; "chapter viewed" is derived (every slice listed). Collapse
@@ -275,6 +279,21 @@ const chapterStats = (c) => {
 const statsHtml = (add, del) =>
   `${del || !add ? `<span class="del">−${del}</span> ` : ""}<span class="add">+${add}</span>`;
 
+// session-wide change size for the header summary (task 029): the rail's
+// per-chapter numbers summed up; file count is distinct paths — a file
+// belongs to one chapter, but don't double-count if that ever changes
+const sessionStats = (session) => {
+  const files = new Set();
+  let add = 0, del = 0;
+  for (const c of session.chapters) {
+    const [, a, d] = chapterStats(c);
+    for (const s of c.files) files.add(s.file);
+    add += a;
+    del += d;
+  }
+  return [files.size, add, del];
+};
+
 function renderSession(session, route = null) {
   // deep links (§17) open the owning chapter: a line target names it, a
   // comment target rides the comment's chapterId, a chapter target is it
@@ -293,6 +312,7 @@ function renderSession(session, route = null) {
   const headLabel = session.headRef ?? short(session.head);
   const baseLabel = session.baseRef ?? short(session.base);
   const openCount = session.comments.filter((c) => !c.resolved).length;
+  const [files, add, del] = sessionStats(session);
   const title = displayTitle(session);
 
   // the body renders one chapter (ux §3.3); the rail is the navigation
@@ -314,12 +334,16 @@ function renderSession(session, route = null) {
       <div class="h-row h-context">
         <span class="repo-path" title="repository under review"><span class="ctx-label">repo</span>${esc(session.meta.repo)}</span>
         <span class="meta">${esc(headLabel)} → ${esc(baseLabel)}</span>
+        <span class="meta" title="whole change: files touched, lines added / removed">${files} file${files === 1 ? "" : "s"} · <span class="add">+${add}</span> <span class="del">−${del}</span></span>
       </div>
       <div class="h-row h-actions">
         <button id="mark-reviewed" class="${session.reviewed ? "marked" : ""}" title="${session.reviewed ? "this review is marked reviewed — click to unmark" : "mark this review as reviewed"}">${session.reviewed ? "✓ reviewed" : "mark reviewed"}</button>
         <a class="explorer-link" href="#${esc(session.id)}/explorer/§head" title="browse the repository's files">files</a>
         <!-- export (§14): a plain link — the route's Content-Disposition triggers the download -->
         <a class="explorer-link" href="/api/sessions/${encodeURIComponent(session.id)}/export" title="download this review as JSON">export</a>
+        <button id="wrap-toggle" title="${diffOverflow === "wrap"
+          ? "long lines scroll horizontally — click to wrap them instead"
+          : "wrap long lines instead of scrolling (comments are hidden while wrapped)"}">${diffOverflow === "wrap" ? "scroll" : "wrap"}</button>
         <details class="more-menu">
           <summary title="more actions">more ▾</summary>
           <div class="menu">
@@ -706,6 +730,7 @@ function wireSession(session, route = null) {
       {
         annotations: annotationsFor(chapter, file),
       marks: chapter.attention.filter((m) => m.file === file),
+        overflow: diffOverflow,
         // gutter click → composer at that line (toggle on same line);
         // while a triage re-pin is pending, the click re-pins instead
         onLineNumberClick: ({ lineNumber, annotationSide }) => {
@@ -825,6 +850,20 @@ function wireSession(session, route = null) {
       inst.el.remove();
       diffs.delete(key);
       if (holder) buildDiff(holder, chapter, s.file);
+    }
+  };
+
+  // wrap toggle (task 029): option plumbing only — same rebuild-everything
+  // pattern as restampMarks, applied to all mounted diffs. In place (not a
+  // renderSession re-render) so a half-written comment draft survives.
+  const rebuildAllDiffs = () => {
+    for (const [key, inst] of [...diffs]) {
+      const [chapterId, file] = key.split("\u0000");
+      const chapter = current.chapters.find((c) => c.id === chapterId);
+      const holder = inst.el.parentElement;
+      inst.el.remove();
+      diffs.delete(key);
+      if (chapter && holder) buildDiff(holder, chapter, file);
     }
   };
 
@@ -1182,6 +1221,20 @@ function wireSession(session, route = null) {
   };
   document.getElementById("session-label")?.addEventListener("click", startTitleEdit);
   document.querySelector(".title-edit")?.addEventListener("click", startTitleEdit);
+
+  // wrap/scroll toggle (task 029): rebuilds every diff with the flipped
+  // option; button re-labels in place (label = the mode you'd switch to)
+  document.getElementById("wrap-toggle")?.addEventListener("click", () => {
+    diffOverflow = diffOverflow === "wrap" ? "scroll" : "wrap";
+    const btn = document.getElementById("wrap-toggle");
+    if (btn) {
+      btn.textContent = diffOverflow === "wrap" ? "scroll" : "wrap";
+      btn.title = diffOverflow === "wrap"
+        ? "long lines scroll horizontally — click to wrap them instead"
+        : "wrap long lines instead of scrolling (comments are hidden while wrapped)";
+    }
+    rebuildAllDiffs();
+  });
 
   // mark-reviewed button (task 022): toggles the reviewed state — no
   // checkbox anywhere in the header; re-render shows the marked state
