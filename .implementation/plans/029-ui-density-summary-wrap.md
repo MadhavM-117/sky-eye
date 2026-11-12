@@ -304,7 +304,10 @@ None. No new packages, no migrations, no config keys.
 ### Follow-up fixes (user feedback, same task)
 - [x] Mark glyphs top-aligned (`pierre-adapter.js` `markGlyph`): absolute
   `top:0` instead of `inset-block:0` + centering, so a wrapped/annotation
-  row's tall cell keeps the glyph beside the line number.
+  row's tall cell keeps the glyph beside the line number. Pixel-offset
+  refinement after screenshot feedback: no flex/padding at all — the span
+  inherits the cell's line-height and centers on the first line box like
+  the number does.
 - [x] Header summary colorized: `.add`/`.del` color rules made global in
   `style.css` (were scoped to `.stats`/`.rail-meta`; the header's `.meta`
   span was invisible-colored). Committed separately as `swpunkzo`.
